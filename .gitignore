@@ -1,5 +1,8 @@
 node_modules/
-dist/
-data/
-*.log
-
+*.node
+opencode.json
+opencode.json.bak*
+.opencode/
+graphify-out/
+data/test_store/
+data/vector_store/
