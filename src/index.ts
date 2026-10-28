@@ -91,8 +91,7 @@ const LANGUAGE_RULES: Record<string, { startMarkers: RegExp[]; endMarkers: strin
 };
 
 export function chunkCodebase(fileContent: string, filePath: string): string[] {
-  const lines = fileContent.split('
-');
+  const lines = fileContent.split('\n');
   const chunks: string[] = [];
   let currentChunk: string[] = [];
   const fileName = path.basename(filePath);
