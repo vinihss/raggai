@@ -55,7 +55,7 @@ raggai domain list|create|use|delete <name>
 raggai opencode install
 raggai init opencode [--domain <name>]
 raggai search "<query>" [--domain <name>] [--domains a,b] [--limit N] [--json]
-raggai import <path> [--domain <name>] [--mode notes|code|auto]
+raggai import <path> [--domain <name>] [--mode notes|code|auto] [--force]
 raggai export <name|all> [--format json|md|graph-html|audit|bundle] [--out <path>]
 ```
 
@@ -105,7 +105,7 @@ Main API endpoints:
 - **CLI `raggai`**: `doctor`, domain management, OpenCode install/init, search/import/export, context/overlay resolution, incremental hash manifests, configurable exclusions, and timing/cache metrics.
 - **Core/Plugin**: per-domain ports/adapters, vector+graph overlay search, writes to active domain, persistent embedding cache with batching, and best-effort stale/orphan vector cleanup.
 - **Web UI + API**: dashboard, search, records, graph, and snapshots with domain selection, real counts (vector/graph), and paginated records.
-- **Graph extraction pipeline (Phase 1)**: enriched fact model (`confidence`, `method`, `sourcePath`, `sourceHash`, `evidence`) persisted as edge provenance; `GraphStorePort` gained `upsertFacts` (merge/dedupe by subject × predicate × object, cross-source evidence accumulation) and `removeFactsBySource` (prune stale facts on reindex/delete, orphan-node cleanup); extraction runs through `GraphExtractionPort` with a deterministic markdown rule (parity with the previous `[Entity] relation [Target]` bullet-line import, now incremental and provenance-aware). Import output and plugin tools report fact metrics (`facts/created/merged/rejected/pruned`). Code extraction (imports/symbols) and richer markdown rules are scheduled in later phases; model-assisted enrichment will be strictly opt-in behind the same port.
+- **Graph extraction pipeline (Phases 1–2)**: enriched fact model (`confidence`, `method`, `sourcePath`, `sourceHash`, `evidence`) persisted as edge provenance; `GraphStorePort` gained `upsertFacts` (merge/dedupe by subject × predicate × object, cross-source evidence accumulation) and `removeFactsBySource` (prune stale facts on reindex/delete, orphan-node cleanup); extraction runs through `GraphExtractionPort` with deterministic markdown rules — legacy line parity, plus frontmatter keys, bullets under predicate headings, wikilinks/local markdown links (`<doc> references <Target>`), and simple tables; predicates are normalized onto a canonical vocabulary with an alias map. Import output and plugin tools report fact metrics (`facts/created/merged/rejected/pruned`). `raggai import --force` re-extracts unchanged files. Code extraction (imports/symbols) is scheduled for Phase 3; model-assisted enrichment will be strictly opt-in behind the same port.
 
 ## Pending items (roadmap)
 
@@ -124,8 +124,7 @@ Main API endpoints:
 7. **E2E and OpenCode integration**
    - Full external end-to-end tests: `init` → `import` → `search` → plugin/OpenCode and UI, covering global vs local, project context, overlay, and write isolation.
 8. **Graph extraction pipeline — remaining phases**
-   - (Phase 1 foundation done — see "Graph extraction pipeline" in AGENTS.md: enriched facts with provenance/confidence, idempotent upsert/prune, import-time metrics, legacy markdown rule parity.)
-   - Phase 2: richer markdown rules (frontmatter/metadata, headings/lists, links, simple tables), canonical predicate vocabulary with alias map.
+   - (Phases 1–2 done — see "Graph extraction pipeline" in AGENTS.md: enriched facts with provenance/confidence, idempotent upsert/prune, import-time metrics, deterministic markdown rules: legacy lines, frontmatter, predicate headings, wikilinks/local links, tables; canonical predicate vocabulary with alias map.)
    - Phase 3: code extraction (imports, symbol definitions, extends/implements) behind `GraphExtractionPort`.
    - Phase 4: graph analytics in UI/CLI (facts by method/confidence, filters, actionable audit).
    - Phase 5: opt-in model-assisted extraction (`rules` default; `hybrid`/`llm` behind config), schema-validated output, thresholds, budget/timeout limits.

@@ -8,8 +8,10 @@
 
 export type GraphFactMethod =
   | "rule" // deterministic line/pattern rule (e.g. "- [A] rel [B]")
-  | "heading" // structural extraction from document headings
-  | "link" // extraction from links/references
+  | "frontmatter" // YAML frontmatter metadata rule
+  | "heading" // bullets under a predicate heading (e.g. "## Dependencies")
+  | "link" // extraction from wikilinks / local markdown links
+  | "table" // simple markdown tables (predicate or triple headers)
   | "symbol" // deterministic code symbol extraction
   | "llm" // model-assisted extraction (opt-in)
   | "manual"; // user-provided fact (e.g. memorize_personal_fact)

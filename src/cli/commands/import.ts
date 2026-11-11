@@ -17,10 +17,11 @@ export async function importCommand(sub: string | undefined, rest: string[]) {
   const t0 = Date.now();
   const args = [sub, ...rest].filter(Boolean) as string[];
   const target = args[0];
-  if (!target) throw new Error("Usage: raggai import <path> [--domain <name>] [--mode notes|code|auto]");
+  if (!target) throw new Error("Usage: raggai import <path> [--domain <name>] [--mode notes|code|auto] [--force]");
   const ctx = resolveContext();
   const domain = getFlag(args, "--domain") || ctx.activeDomain || "global";
   const mode = getFlag(args, "--mode") || "auto";
+  const force = args.includes("--force");
   ensureDomain(domain, domain === "global" ? "global" : "custom");
   const c = createContainer(domain);
   const p = path.resolve(target);
@@ -61,7 +62,7 @@ export async function importCommand(sub: string | undefined, rest: string[]) {
     const seen = new Set(files);
     for (const f of files) {
       const content = fs.readFileSync(f, "utf-8"); const h = hash(content);
-      if (manifest[f] === h) { skipped++; continue; }
+      if (!force && manifest[f] === h) { skipped++; continue; }
       if (manifest[f]) await safeDeletePath(f);
       const chunks = chunkTextWithOverlap(content);
       const items = chunks.map(chunk => ({ text: chunk, saveText: `[Note: ${path.basename(f)}] ${chunk}`, meta: { type: "note", path: f, fileHash: h } as Record<string, unknown> }));
@@ -95,7 +96,7 @@ export async function importCommand(sub: string | undefined, rest: string[]) {
   for (const f of files) {
     try {
       const content = fs.readFileSync(f, "utf-8"); const h = hash(content);
-      if (manifest[f] === h) { skipped++; continue; }
+      if (!force && manifest[f] === h) { skipped++; continue; }
       if (manifest[f]) await safeDeletePath(f);
       const chunks = chunkCodebase(content, f);
       const items = chunks.map(chunk => ({ text: chunk, saveText: chunk, meta: { type: "code", path: f, fileHash: h } as Record<string, unknown> }));

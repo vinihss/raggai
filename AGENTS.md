@@ -48,15 +48,23 @@ Repo: Bun + TypeScript. Plugin entry `dist/index.js` (built from `src/index.ts`)
 
 ## Graph extraction pipeline (in progress)
 
-Phase 1 (foundation) is implemented in `src/`:
+Phase 1 (foundation) and Phase 2 (markdown rules) are implemented in `src/`:
 - **Model**: `src/domain/models/graph-fact.ts` (`EnrichedFact`, `FactProvenance`, extraction/upsert/remove contracts).
 - **Ports**: `src/ports/outbound/graph-store.port.ts` (`upsertFacts`, `removeFactsBySource`), `src/ports/outbound/graph-extraction.port.ts`.
-- **Extraction**: `src/adapters/outbound/extraction/deterministic.extraction.ts` (markdown legacy line rule, method `rule`, confidence 0.9; code kind is an intentional no-op stub until Phase 3).
+- **Extraction** (`src/adapters/outbound/extraction/deterministic.extraction.ts`):
+  - `rule` (0.9): legacy `- [A] rel [B]` line parity.
+  - `frontmatter` (0.85): YAML frontmatter keys mapping to the canonical vocabulary (flow and block lists), e.g. `uses: [React, Bun]`.
+  - `heading` (0.75): bullets under a predicate heading (e.g. `## Dependencies`) become facts (`<doc> <pred> <bullet>`).
+  - `link`: Obsidian wikilinks `[[Target]]` / `[[Target|Alias]]` (0.8) and local markdown links (0.75) become `<doc> references <Target>`; percent-decoded.
+  - `table` (0.8): predicate-header tables and entity/relation/target triple tables.
+  - Code fences (` ``` `) are ignored; code files remain a no-op stub until Phase 3.
+  - Predicate normalization + alias map (`src/domain/services/predicate-vocab.ts`): canonical set `uses, depends_on, contains, defines, references, implements, calls, extends, part_of`; unknown predicates pass through as lower_snake_case.
 - **Ingest**: `src/domain/services/graph-ingest.ts` (prune-stale by `sourceHash` → extract → confidence filter → upsert; aggregate CLI/plugin metrics).
-- **Store**: `src/adapters/outbound/graphology/json-graph.adapter.ts` persists provenance/confidence/occurrences on edges (backward-compatible with legacy edges, which stay source-untracked). Entity typo-merge now requires a matching first character (avoids merging distinct entities like `delta` → `beta`).
-- Import flows (`raggai import` and plugin `import_markdown_notes`/`index_local_codebase`) are idempotent w.r.t. graph facts; deleted sources prune their facts and orphan nodes.
+- **Store**: `src/adapters/outbound/graphology/json-graph.adapter.ts` persists provenance/confidence/occurrences on edges (backward-compatible with legacy edges; first-open persists the empty graph file). Entity typo-merge requires a matching first character (avoids merging distinct entities like `delta` → `beta`).
+- Import flows (`raggai import` and plugin `import_markdown_notes`/`index_local_codebase`) are idempotent w.r.t. graph facts; deleted sources prune their facts and orphan nodes. `raggai import --force` re-extracts unchanged files (needed after extractor upgrades).
+- `bun test_graph_extraction.ts` — extraction regression checks (run after touching the extractor/vocab).
 
-Roadmap: Phase 2 = markdown rules (frontmatter/headings/links/tables) · Phase 3 = code extraction (imports/symbols) · Phase 4 = UI/CLI graph analytics · Phase 5 = opt-in model-assisted extraction (validated JSON, thresholds) · Phase 6 = optional AST adapters behind `GraphExtractionPort`.
+Roadmap: Phase 3 = code extraction (imports/symbols) · Phase 4 = UI/CLI graph analytics · Phase 5 = opt-in model-assisted extraction (validated JSON, thresholds) · Phase 6 = optional AST adapters behind `GraphExtractionPort`.
 
 ## Pending items (documented)
 1. **Complete embedding cache/batching in indexing**: apply `generateMany`/batching and cache metrics consistently across all ingestion flows (CLI/plugin/API).
@@ -66,10 +74,9 @@ Roadmap: Phase 2 = markdown rules (frontmatter/headings/links/tables) · Phase 3
 5. **Multi-domain snapshots/versioning**: domain-scoped snapshot/restore with scope/confirmations and consistent CLI/UI/API integration.
 6. **Fully autonomous global distribution**: `raggai` on PATH in global installs and fully autonomous execution outside the repo (assets/native deps), with `opencode install|init` validated in a clean environment.
 7. **E2E and OpenCode integration**: full external tests (`init` → `import` → `search` → plugin/OpenCode/UI) covering global vs local, project context, overlay, and write isolation.
-8. **Graph extraction pipeline — remaining phases** (Phase 1 foundation done, see section above):
-   - Phase 2: richer markdown rules (frontmatter/metadata, headings/lists, links, simple tables/KB rows), canonical predicate vocabulary (`uses`, `depends_on`, `contains`, `defines`, `references`, `implements`, `calls`…) with alias map, entity alias handling.
+8. **Graph extraction pipeline — remaining phases** (Phases 1–2 done, see section above):
    - Phase 3: code extraction (imports, symbol definitions `class|interface|type|function|def|func|struct|impl`, extends/implements) replacing the `kind: "code"` stub.
    - Phase 4: graph analytics in UI/CLI (facts by method/confidence, filters, actionable audit).
    - Phase 5: opt-in model-assisted extraction (`rules` default; `hybrid`/`llm` behind config), schema-validated JSON output, thresholds, selective scope, budget/timeout limits.
    - Phase 6: optional AST/tree-sitter adapters behind `GraphExtractionPort` for prioritized languages; move `minConfidence` from env into TOML (`graph.extraction.*`);
-     note: the `raggai` domain graph is currently empty (existing content has no legacy-format fact lines) and will only be populated once Phase 2/3 rules (or manual `memorize_personal_fact`) produce facts.
+     note: pure markdown yields mostly `references` facts (e.g. Knowledges doc graph); richer relations in this repo's docs will keep the graph sparse until Phase 3 code extraction.

@@ -56096,42 +56096,292 @@ function graphIngestForFile(graph, extractor, input, opts) {
   return metrics;
 }
 
+// src/domain/services/predicate-vocab.ts
+var CANONICAL_PREDICATES = [
+  "uses",
+  "depends_on",
+  "contains",
+  "defines",
+  "references",
+  "implements",
+  "calls",
+  "extends",
+  "part_of"
+];
+var RAW_ALIASES = {
+  uses: ["use", "uses", "using", "usage", "utilise", "utilises", "utilising", "utilize", "utilizes", "utilizing"],
+  depends_on: [
+    "depend",
+    "depends",
+    "depending",
+    "depends on",
+    "depend on",
+    "dependency",
+    "dependencies",
+    "require",
+    "requires",
+    "required",
+    "requirement",
+    "requirements",
+    "need",
+    "needs"
+  ],
+  contains: [
+    "contain",
+    "contains",
+    "containing",
+    "include",
+    "includes",
+    "including",
+    "comprise",
+    "comprises",
+    "comprising",
+    "consists of",
+    "consisting of"
+  ],
+  defines: [
+    "define",
+    "defines",
+    "defining",
+    "definition",
+    "definitions",
+    "declare",
+    "declares",
+    "declaring",
+    "declaration",
+    "declarations"
+  ],
+  references: [
+    "reference",
+    "references",
+    "referencing",
+    "refer",
+    "refers",
+    "referring",
+    "refer to",
+    "refers to",
+    "related",
+    "related to",
+    "related links",
+    "related docs",
+    "see",
+    "see also",
+    "link",
+    "links",
+    "mention",
+    "mentions",
+    "veja",
+    "ver",
+    "consulte"
+  ],
+  implements: ["implement", "implements", "implementing", "implementation", "implementations", "implementa"],
+  calls: ["call", "calls", "calling", "invoke", "invokes", "invoking", "invocation", "chama", "invoca"],
+  extends: ["extend", "extends", "extending", "inherit", "inherits", "inheritance", "inherit from", "inherits from"],
+  part_of: ["part of", "belongs to", "belong to", "belongs", "member of", "faz parte de", "pertence a", "pertence"]
+};
+function normalizePredicate(raw) {
+  return String(raw ?? "").trim().toLowerCase().replace(/[_\-/]+/g, " ").replace(/\s+/g, " ").trim();
+}
+var ALIAS_INDEX = (() => {
+  const m = new Map;
+  for (const canonical of CANONICAL_PREDICATES) {
+    m.set(normalizePredicate(canonical.replace(/_/g, " ")), canonical);
+    for (const alias of RAW_ALIASES[canonical])
+      m.set(normalizePredicate(alias), canonical);
+  }
+  return m;
+})();
+function canonicalPredicate(raw) {
+  const norm = normalizePredicate(raw);
+  const hit = ALIAS_INDEX.get(norm);
+  return hit ?? norm.replace(/\s+/g, "_");
+}
+function isKnownPredicate(raw) {
+  return ALIAS_INDEX.has(normalizePredicate(raw));
+}
+
+// src/domain/services/entity-utils.ts
+function normalizeEntityText(raw) {
+  let s = String(raw ?? "");
+  s = s.replace(/`([^`]*)`/g, "$1");
+  s = s.replace(/\*\*([^*]+)\*\*/g, "$1").replace(/\*([^*]+)\*/g, "$1");
+  s = s.replace(/~~([^~]+)~~/g, "$1");
+  s = s.trim().replace(/\s+/g, " ");
+  s = s.replace(/^["'\(\[]+|["'\)\]]+$/g, "").trim();
+  s = s.replace(/[.,;:]+$/, "").trim();
+  return s;
+}
+function isValidEntity(s) {
+  if (!s)
+    return false;
+  if (s.length > 80)
+    return false;
+  if (!/[A-Za-zÀ-ÿ0-9]/.test(s))
+    return false;
+  if (/^https?:\/\//i.test(s))
+    return false;
+  return true;
+}
+function safeDecodeUri(s) {
+  try {
+    return decodeURIComponent(s);
+  } catch {
+    return s;
+  }
+}
+function docEntityName(sourcePath) {
+  const base = sourcePath.split(/[\\/]/).pop() || sourcePath;
+  const dot = base.lastIndexOf(".");
+  return safeDecodeUri(dot > 0 ? base.slice(0, dot) : base);
+}
+
 // src/adapters/outbound/extraction/deterministic.extraction.ts
 var LEGACY_FACT_LINE = /-\s*\[([^\]]+)\]\s+([^\[\]\n]+?)\s+\[([^\]]+)\]/;
+var CONFIDENCE = { rule: 0.9, frontmatter: 0.85, table: 0.8, wiki: 0.8, md: 0.75, heading: 0.75 };
+var WIKILINK = /\[\[([^\]|#]+)(#[^\]|]*)?(\|[^\]]*)?\]\]/g;
+var MD_LINK = /(?<!!)\[([^\]]*)\]\(([^)\s]+)(#[^)\s]*)?\)/g;
+var TRIPLE_HEADERS = {
+  entity: "subject",
+  subject: "subject",
+  source: "subject",
+  from: "subject",
+  relation: "predicate",
+  predicate: "predicate",
+  rel: "predicate",
+  target: "object",
+  object: "object",
+  to: "object",
+  dest: "object"
+};
+function parseTableCells(line) {
+  const inner = line.trim().replace(/^\|/, "").replace(/\|$/, "");
+  return inner.split("|").map((c) => normalizeEntityText(c));
+}
+function isSeparatorRow(cells) {
+  return cells.length > 0 && cells.every((c) => /^:?-{2,}:?$/.test(c.trim()) || /^-+$/.test(c.trim()));
+}
+function splitFrontmatterList(value) {
+  let v = value.trim();
+  if (v.startsWith("[") && v.endsWith("]"))
+    v = v.slice(1, -1);
+  return v.split(",").map((s) => normalizeEntityText(s.replace(/^["']|["']$/g, ""))).filter(Boolean);
+}
 
 class DeterministicExtractionAdapter {
   extract(input) {
+    const facts = input.kind === "note" ? this.extractNote(input) : [];
+    return { facts, diagnostics: { extracted: facts.length, rejectedLowConfidence: 0 } };
+  }
+  extractNote(input) {
     const facts = [];
-    if (input.kind === "note") {
-      for (const rawLine of input.text.split(`
-`)) {
-        const line = rawLine.trim();
-        if (!line)
-          continue;
-        const m = line.match(LEGACY_FACT_LINE);
-        if (!m)
-          continue;
-        const subject = m[1].trim();
-        const predicate = m[2].trim();
-        const object = m[3].trim();
-        if (!subject || !predicate || !object)
-          continue;
-        facts.push({
-          subject,
-          predicate,
-          object,
-          confidence: 0.9,
-          method: "rule",
-          sourcePath: input.path,
-          sourceHash: input.hash,
-          evidence: line.slice(0, 200)
-        });
-      }
-    }
-    return {
-      facts,
-      diagnostics: { extracted: facts.length, rejectedLowConfidence: 0 }
+    const doc = docEntityName(input.path);
+    const push = (subject, predicate, object, confidence, method, evidence) => {
+      const s = normalizeEntityText(subject), o = normalizeEntityText(object);
+      if (!isValidEntity(s) || !isValidEntity(o))
+        return;
+      const p = canonicalPredicate(predicate);
+      if (!p)
+        return;
+      facts.push({ subject: s, predicate: p, object: o, confidence, method, sourcePath: input.path, sourceHash: input.hash, evidence: evidence.slice(0, 200) });
     };
+    const lines = input.text.split(`
+`);
+    let inFrontmatter = false, frontmatterSeen = false, inFence = false;
+    let headingPredicate = null;
+    let pendingFmPredicate = null;
+    let tableHeader = null, tableRows = [];
+    const flushTable = () => {
+      if (tableHeader) {
+        const norm = tableHeader.map((c) => c.toLowerCase().replace(/[^a-z_]/g, "_").replace(/^_+|_+$/g, ""));
+        const roles = norm.map((c) => TRIPLE_HEADERS[c]);
+        const triple = roles.length >= 3 && roles[0] === "subject" && roles[1] === "predicate" && roles[2] === "object";
+        const predCols = tableHeader.map((c, i2) => i2 > 0 && isKnownPredicate(c) ? { i: i2, pred: canonicalPredicate(c) } : null).filter(Boolean);
+        for (const row of tableRows) {
+          if (triple) {
+            push(row[0], row[1], row[2], CONFIDENCE.table, "table", `| ${row.join(" | ")} |`);
+          } else {
+            for (const { i: i2, pred } of predCols)
+              push(row[0], pred, row[i2], CONFIDENCE.table, "table", `| ${row.join(" | ")} |`);
+          }
+        }
+      }
+      tableHeader = null;
+      tableRows = [];
+    };
+    for (let idx = 0;idx < lines.length; idx++) {
+      const trimmed = lines[idx].trim();
+      if (idx === 0 && trimmed === "---") {
+        inFrontmatter = true;
+        frontmatterSeen = true;
+        continue;
+      }
+      if (inFrontmatter) {
+        if (trimmed === "---" || trimmed === "...") {
+          inFrontmatter = false;
+          continue;
+        }
+        const kv = trimmed.match(/^([A-Za-z][A-Za-z0-9_-]*):\s*(.*)$/);
+        if (kv) {
+          const key = kv[1], val = kv[2].trim();
+          pendingFmPredicate = isKnownPredicate(key) ? canonicalPredicate(key) : null;
+          if (val !== "" && pendingFmPredicate) {
+            for (const item of splitFrontmatterList(val))
+              push(doc, pendingFmPredicate, item, CONFIDENCE.frontmatter, "frontmatter", trimmed);
+            pendingFmPredicate = null;
+          }
+        } else if (pendingFmPredicate && /^-\s+/.test(trimmed)) {
+          push(doc, pendingFmPredicate, trimmed.replace(/^-\s+/, ""), CONFIDENCE.frontmatter, "frontmatter", trimmed);
+        } else if (trimmed !== "" && !/^-\s+/.test(trimmed)) {
+          pendingFmPredicate = null;
+        }
+        continue;
+      }
+      if (frontmatterSeen && idx === 0) {}
+      if (/^(```|~~~)/.test(trimmed)) {
+        inFence = !inFence;
+        flushTable();
+        continue;
+      }
+      if (inFence)
+        continue;
+      if (/^\|.*\|$/.test(trimmed)) {
+        const cells = parseTableCells(trimmed);
+        if (isSeparatorRow(cells))
+          continue;
+        if (!tableHeader)
+          tableHeader = cells;
+        else
+          tableRows.push(cells);
+        continue;
+      }
+      flushTable();
+      const h = trimmed.match(/^#{1,6}\s+(.+)$/);
+      if (h) {
+        const text = normalizeEntityText(h[1]);
+        headingPredicate = isKnownPredicate(text) ? canonicalPredicate(text) : null;
+        continue;
+      }
+      const b = trimmed.match(/^(?:[-*+]|\d+[.)])\s+(.+)$/);
+      if (b && headingPredicate && !/[\[\]]/.test(b[1])) {
+        push(doc, headingPredicate, b[1], CONFIDENCE.heading, "heading", trimmed);
+      }
+      for (const m of trimmed.matchAll(WIKILINK))
+        push(doc, "references", m[1], CONFIDENCE.wiki, "link", trimmed);
+      for (const m of trimmed.matchAll(MD_LINK)) {
+        const target = m[2];
+        if (/^https?:\/\//i.test(target))
+          continue;
+        const pathOnly = target.split("#")[0];
+        if (!/\.(md|mdx|markdown|txt)$/i.test(pathOnly))
+          continue;
+        push(doc, "references", docEntityName(pathOnly), CONFIDENCE.md, "link", trimmed);
+      }
+      const legacy = trimmed.match(LEGACY_FACT_LINE);
+      if (legacy)
+        push(legacy[1], legacy[2], legacy[3], CONFIDENCE.rule, "rule", trimmed);
+    }
+    flushTable();
+    return facts;
   }
 }
 
@@ -68621,7 +68871,7 @@ function getLevenshteinDistance(a, b) {
   return matrix[b.length][a.length];
 }
 var clamp01 = (n) => Number.isFinite(n) ? Math.min(1, Math.max(0, n)) : 0;
-var normalizePredicate = (relation) => relation.trim().toLowerCase().replace(/\s+/g, "_");
+var normalizePredicate2 = (relation) => relation.trim().toLowerCase().replace(/\s+/g, "_");
 var nowIso = () => new Date().toISOString();
 
 class JsonGraphAdapter {
@@ -68661,7 +68911,7 @@ class JsonGraphAdapter {
         continue;
       const subject = this.validateAndFindEntity(String(fact.subject ?? ""));
       const object = this.validateAndFindEntity(String(fact.object ?? ""));
-      const relation = normalizePredicate(String(fact.predicate ?? ""));
+      const relation = normalizePredicate2(String(fact.predicate ?? ""));
       if (!subject || !object || !relation)
         continue;
       if (!this.graph.hasNode(subject))
