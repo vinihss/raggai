@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+set -euo pipefail
+SOURCE="${BASH_SOURCE[0]}"
+# resolve symlinks
+while [ -h "$SOURCE" ]; do
+  DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
+  SOURCE="$(readlink "$SOURCE")"
+  [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE"
+done
+DIR="$(cd -P "$(dirname "$SOURCE")/.." && pwd)"
+if [ -f "$DIR/src/cli/index.ts" ]; then
+  exec bun "$DIR/src/cli/index.ts" "$@"
+elif [ -f "$DIR/dist/cli/index.js" ]; then
+  exec bun "$DIR/dist/cli/index.js" "$@"
+else
+  echo "raggai: invalid installation (CLI not found in $DIR)" >&2
+  exit 1
+fi

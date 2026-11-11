@@ -26,6 +26,27 @@
     },
     {
       "key": "Rust"
+    },
+    {
+      "key": "raggai"
+    },
+    {
+      "key": "LanceDB"
+    },
+    {
+      "key": "Graphology"
+    },
+    {
+      "key": "Transformers.js"
+    },
+    {
+      "key": "RAG Híbrido"
+    },
+    {
+      "key": "Busca Vetorial"
+    },
+    {
+      "key": "Grafo de Conhecimento"
     }
   ],
   "edges": [
@@ -59,6 +80,62 @@
       "target": "Rust",
       "attributes": {
         "relation": "usa"
+      }
+    },
+    {
+      "key": "raggai-usa-LanceDB",
+      "source": "raggai",
+      "target": "LanceDB",
+      "attributes": {
+        "relation": "usa"
+      }
+    },
+    {
+      "key": "raggai-usa-Graphology",
+      "source": "raggai",
+      "target": "Graphology",
+      "attributes": {
+        "relation": "usa"
+      }
+    },
+    {
+      "key": "raggai-usa-Transformers.js",
+      "source": "raggai",
+      "target": "Transformers.js",
+      "attributes": {
+        "relation": "usa"
+      }
+    },
+    {
+      "key": "raggai-implementa-RAG Híbrido",
+      "source": "raggai",
+      "target": "RAG Híbrido",
+      "attributes": {
+        "relation": "implementa"
+      }
+    },
+    {
+      "key": "RAG Híbrido-combina-Busca Vetorial",
+      "source": "RAG Híbrido",
+      "target": "Busca Vetorial",
+      "attributes": {
+        "relation": "combina"
+      }
+    },
+    {
+      "key": "RAG Híbrido-combina-Grafo de Conhecimento",
+      "source": "RAG Híbrido",
+      "target": "Grafo de Conhecimento",
+      "attributes": {
+        "relation": "combina"
+      }
+    },
+    {
+      "key": "OpenCode-integra-raggai",
+      "source": "OpenCode",
+      "target": "raggai",
+      "attributes": {
+        "relation": "integra"
       }
     }
   ]

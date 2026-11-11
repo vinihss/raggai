@@ -8,15 +8,15 @@ export class HybridOrchestrator implements RagOperationsPort {
   ) {}
 
   async consultar(query: string, keywords?: string[]) {
-    // Orquestração pura: vetor + grafo -> fusão híbrida (RRF / confiança).
-    throw new Error("Implementar: HybridOrchestrator.consultar");
+    // Pure orchestration: vector + graph -> hybrid fusion (RRF / confidence).
+    throw new Error("Not implemented: HybridOrchestrator.consultar");
   }
 
   async memorizar(fato: string, meta?: Record<string, unknown>) {
-    throw new Error("Implementar: HybridOrchestrator.memorizar");
+    throw new Error("Not implemented: HybridOrchestrator.memorizar");
   }
 
   async importarCodebase(path: string) {
-    throw new Error("Implementar: HybridOrchestrator.importarCodebase");
+    throw new Error("Not implemented: HybridOrchestrator.importarCodebase");
   }
 }

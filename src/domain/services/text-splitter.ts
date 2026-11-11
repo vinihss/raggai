@@ -37,7 +37,7 @@ export function chunkCodebase(fileContent: string, filePath: string): string[] {
   if (["json", "yaml", "yml", "toml", "md", "css"].includes(ext)) {
     for (let i = 0; i < lines.length; i += 40) {
       const slice = lines.slice(i, i + 45);
-      chunks.push(`[Ficheiro: ${fileName}] [Config/Estático]\n${slice.join("\n")}`);
+      chunks.push(`[File: ${fileName}] [Config/Static]\n${slice.join("\n")}`);
     }
     return chunks;
   }
@@ -51,7 +51,7 @@ export function chunkCodebase(fileContent: string, filePath: string): string[] {
 
     if (isNewComponent && currentChunk.length >= 20) {
       chunks.push(
-        `[Ficheiro: ${fileName}] [Linguagem: ${ext}] [Linhas: ${i - currentChunk.length + 1}-${i}]\n${currentChunk.join("\n")}`,
+        `[File: ${fileName}] [Language: ${ext}] [Lines: ${i - currentChunk.length + 1}-${i}]\n${currentChunk.join("\n")}`,
       );
       currentChunk = currentChunk.slice(-4);
     }
@@ -61,19 +61,19 @@ export function chunkCodebase(fileContent: string, filePath: string): string[] {
       const isEndMarker = rules.endMarkers.includes(trimmedLine) || currentChunk.length >= 80;
       if (isEndMarker && currentChunk.length >= 15) {
         chunks.push(
-          `[Ficheiro: ${fileName}] [Linguagem: ${ext}] [Linhas: ${i - currentChunk.length + 1}-${i}]\n${currentChunk.join("\n")}`,
+          `[File: ${fileName}] [Language: ${ext}] [Lines: ${i - currentChunk.length + 1}-${i}]\n${currentChunk.join("\n")}`,
         );
         currentChunk = [];
       }
     } else if (currentChunk.length >= 60) {
       chunks.push(
-        `[Ficheiro: ${fileName}] [Python] [Linhas: ${i - currentChunk.length + 1}-${i}]\n${currentChunk.join("\n")}`,
+        `[File: ${fileName}] [Python] [Lines: ${i - currentChunk.length + 1}-${i}]\n${currentChunk.join("\n")}`,
       );
       currentChunk = [];
     }
   }
   if (currentChunk.length > 0) {
-    chunks.push(`[Ficheiro: ${fileName}] [Linguagem: ${ext}]\n${currentChunk.join("\n")}`);
+    chunks.push(`[File: ${fileName}] [Language: ${ext}]\n${currentChunk.join("\n")}`);
   }
   return chunks;
 }

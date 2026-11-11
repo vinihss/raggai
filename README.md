@@ -1,178 +1,136 @@
-# raggai — RAG Híbrido Local (Vetor + Grafo) para Agentes de IA
+# raggai — Local Hybrid RAG (Vector + Graph) for AI Agents
 
-Repositório com especificação técnica e implementação em **TypeScript/Bun** de uma memória de longo prazo híbrida e modular para agentes (OpenCode, LangChain, CrewAI, AutoGen, APIs). Opera 100% localmente, eliminando custos de APIs externas e filtrando contexto de forma cirúrgica.
+`raggai` is a local-first hybrid memory system for coding agents (OpenCode, APIs, frameworks). It combines **vector search** (LanceDB + local embeddings) with a **knowledge graph** (Graphology/JSON) and supports **multi-domain** storage, project-level context/overlay, a CLI, and a web UI.
 
-Current state (2026-10-27): complete. `dist/index.js` + `.node` construídos. Skill (`rag-memory.md`) no formato SKILL.md criada. `test_rag.ts` validado (19,08% confiança, `errorHandler.ts`). No `system.prompt` copied — works via skill (`/rag-memory`) + plugin.
+## Highlights
 
----
+- **Hybrid retrieval**: semantic vector search + graph connections/keywords.
+- **Multi-domain architecture**: isolated stores per domain with overlay search across domains (e.g. project + global), writing to the active domain.
+- **Global + project config (TOML)**:
+  - Global: `~/.config/raggai/` (`config.toml`, `domains.toml`, `domains/<name>/{vector_store,graph_store.json}`, `cache/embeddings`, `versions/`)
+  - Project: `.raggai/config.toml` (`domain`, `include` overlay, exclusions, `embeddingCache`)
+- **CLI (`raggai`)**: domain management, OpenCode install/init, search/import/export, diagnostics.
+- **OpenCode integration**: plugin (`dist/index.js`) + skill (`rag-memory.md`) with hybrid memory tools.
+- **Web UI + API**: domain-aware dashboard, search, records browser, graph view/audit/export, snapshots (`web-server.ts` + `src/web`).
 
-## 🏗️ System Architecture
-
-Duas camadas independentes que se complementam em tempo de execução:
-
-1. **Camada Vetorial (LanceDB + Transformers.js):** Modelo `Xenova/all-MiniLM-L6-v2` executado diretamente na CPU (ONNX). Buscas por proximidade semântica (notas livres, códigos, desabafos).
-2. **Camada de Grafo (Graphology / JSON):** Mapeia conexões lógicas exatas (`[João] -> (trabalha_em) -> [OpenCode]`). Impede alucinações ao cruzar entidades.
-
-```text
-[Agente] ──(Pergunta)──> [Orquestrador Híbrido — src/index.ts / dist/index.js]
-                                    │
-                    ┌───────────────┴───────────────┐
-                    ▼                               ▼
-          [Grafo: data/graph_store.json]      [Vetor: data/vector_store/]
-          (relações exatas + keywords)        (embeddings semânticos)
-                    │                               │
-                    └───────────────┬───────────────┘
-                                    ▼
-[Agente] <──(Contexto Consolidado Cirúrgico)──┘
-```
-
----
-
-## 📂 Directory Structure
+## Architecture
 
 ```text
-~/raggai/
-├── data/
-│   ├── vector_store/       # LanceDB (embeddings persistidos)
-│   └── graph_store.json    # Grafo de conhecimento
-├── src/
-│   ├── index.ts            # Ferramentas + chunking poliglota + grafo + vetor
-│   └── server.ts           # API REST local (:3000, /query, /save)
-├── dist/
-│   ├── index.js            # Build Bun (--target node, 2,66 MB)
-│   └── lancedb.*.node      # Asset nativo (75,8 MB)
-├── rag-memory.md           # Skill padrão (SKILL.md: name, usage, module)
-├── system-prompt-rag.md    # Referência de prompt (não obrigatório)
-├── install-opencode.ts     # Registro automático do plugin + skill
-├── install.ts              # Build automatizado (corrigido: sem import {Bun})
-├── test_rag.ts             # Pipeline de validação (embeddings + LanceDB)
-├── reset_indexes.ts        # Limpeza de índices
-├── AGENTS.md               # Instruções de integração OpenCode
-├── README.md               # Este arquivo
-└── package.json            # Dependências Bun
+[Agent / CLI / Web UI]
+        │
+        ▼
+[Orchestrator & Ports/Adapters]
+        │
+  ┌─────┴─────┐
+  ▼           ▼
+[Vector]    [Graph]
+LanceDB     Graphology/JSON
+(per domain, overlay on reads)
 ```
 
----
+- **Embeddings**: local Transformers.js model (`Xenova/all-MiniLM-L6-v2`, ONNX/CPU) with persistent embedding cache and batching support.
+- **Hexagonal structure** (`src/`): `domain/`, `ports/`, `adapters/`, `config/`.
 
-## 🚀 Quick Setup (Local)
+## Quick setup
 
-Requires **Bun** (1.4.4+ confirmed). At repo root:
+Requires **Bun**.
 
 ```bash
 bun install.ts
-```
-
-The script does:
-1. Creates `./data/`
-2. `bun install`
-3. `bun build ./src/index.ts --outdir ./dist --target node`
-4. Confirms `dist/index.js` + `.node`
-
-Then validate:
-```bash
 bun test_rag.ts
 ```
 
-Expected result (proven): search "Where is the logic that generates server errors?" returns `src/middleware/errorHandler.ts` with ~19% confidence.
+- `bun install.ts`: prepares data/build artifacts and builds plugin assets.
+- `bun build ./src/index.ts --outdir ./dist --target node`: rebuild plugin after `src/` changes.
 
----
+## CLI
 
-## 🔌 Automatic OpenCode Installation (Skill + Plugin, no prompt copy)
+The CLI entrypoint is `bin/raggai` (also `bun src/cli/index.ts ...` in development).
 
-The system works via **skill** (`rag-memory.md`) and **plugin** (`dist/index.js`), not `system.prompt`. No instruction content is copied.
-
-```bash
-bun install-opencode.ts
-```
-
-What it does (reference only, does not edit `opencode.json`):
-- Confirms `dist/index.js`
-- Copies `rag-memory.md` → `~/.opencode/skills/rag-memory.md`
-- Creates `~/.opencode/plugin/raggai.json` pointing to the module
-- **Does not** copy `system-prompt-rag.md`
-
-Agent usage: invoke `/rag-memory` (or let personal context trigger the skill). Tools run in the background via plugin.
-
----
-
-## 🧪 Validate with Test Script
-
-Before integrating, validate locally:
+Common commands:
 
 ```bash
-bun test_rag.ts
+raggai doctor
+raggai domain list|create|use|delete <name>
+raggai opencode install
+raggai init opencode [--domain <name>]
+raggai search "<query>" [--domain <name>] [--domains a,b] [--limit N] [--json]
+raggai import <path> [--domain <name>] [--mode notes|code|auto]
+raggai export <name|all> [--format json|md|graph-html|audit|bundle] [--out <path>]
 ```
 
-Validates:
-- Modelo `Transformers.js` local (`all-MiniLM-L6-v2`)
-- Métrica de cosseno (distância vetorial)
-- Persistência física (`data/test_store/` + LanceDB)
+Notes:
+- `import` supports incremental indexing (hash manifest), configurable exclusions/sensitive-file filtering, batched embeddings, and orphan pruning (best-effort vector cleanup).
+- `search` can run over an overlay of domains and reports timing/cache stats.
 
----
+## OpenCode integration
 
-## 🛠️ Native Tools Catalog
+```bash
+raggai opencode install
+raggai init opencode --domain <project-domain>
+```
 
-When plugin `dist/index.js` is registered, the agent gains these tools (exported from `src/index.ts`):
+- `opencode install`: registers the plugin/skill globally for OpenCode.
+- `init opencode`: configures the current project (`.raggai/config.toml`, `opencode.json`) and links to the installed plugin/skill (global or local fallback).
 
-| Tool | Function |
+## Plugin tools
+
+Exported from `dist/index.js` (domain/context aware):
+
+| Tool | Purpose |
 |---|---|
-| `consult_memory_personal` | Hybrid search: vector (LanceDB) + graph (keywords) |
-| `memorize_personal_fact` | Stores structured fact + text in vector |
-| `import_markdown_notes` | `.md` ingestion with overlap (25 words) + auto graphs |
-| `index_local_codebase` | Indexes source code (TS, JS, PY, GO, RS, JSON/YAML/CSS) |
-| `search_semantic_codebase` | Semantic search in indexed code (pre-LLM filter) |
-| `index_local_codebase` | Indexes full repository |
-| `audit_and_visualize_graph` | Cleans orphan nodes + structured tree report |
-| `export_visual_graph_map` | Exports interactive 2D HTML map (groups by color) |
-| `reset_local_memory` | Deletes indexes (`Vector` + `Graph`) — requires `confirm: true` |
+| `consult_memory_personal` | Hybrid search (vector + graph) across overlay domains |
+| `memorize_personal_fact` | Store text and optional structured fact in active domain |
+| `import_markdown_notes` | Import `.md` notes with chunk overlap and graph extraction |
+| `index_local_codebase` | Incremental codebase indexing into active domain |
+| `search_semantic_codebase` | Semantic code search across overlay domains |
+| `audit_and_visualize_graph` | Audit graph and produce structured report/tree |
+| `export_visual_graph_map` | Export interactive HTML graph map |
+| `reset_local_memory` | Clear active domain indexes (requires `confirm: true`) |
 
-Polyglot chunking (`chunkCodebase()` + `LANGUAGE_RULES`): recognizes `ts/js`, `py`, `go`, `rs`, `json/yaml/css/md`; isolates blocks by signature (`def`, `func`, `class`, etc.).
-
----
-
-## 🌐 How to Use Outside OpenCode (Frameworks / APIs)
-
-Exponha via API REST local:
+## Web UI & API
 
 ```bash
-bun run src/server.ts
-# Port 3000; endpoints /query (POST) and /save (POST)
+bun ./web-server.ts                 # API on http://localhost:3000
+cd src/web && bun run dev --host 0.0.0.0 --port 5173
 ```
 
-Python example (pure):
-```python
-import requests
-res = requests.post("http://localhost:3000/query",
-  json={"query":"erro interno do servidor","keywords":["João"]})
-print(res.json())  # {graph:[...], vector:[...]}
-```
+Main API endpoints:
+- `/api/status`, `/api/domains`, `/api/records`, `/api/search`, `/api/graph`, `/api/graph/audit`, `/api/graph/export`, `/api/snapshots`, `/api/snapshot`, `/api/rollback`
 
-Exemplo LangChain (`@tool`):
-```python
-from langchain_core.tools import tool
-import requests
+## Current status (multi-domain / CLI / Web UI)
 
-@tool
-def memento_hibrido_local(query: str, palavras_chave: list) -> dict:
-    res = requests.post("http://localhost:3000/query",
-                        json={"query": query, "keywords": palavras_chave})
-    return res.json()
-```
+- **Global storage**: `~/.config/raggai/` with `config.toml`, `domains.toml`, per-domain stores, embedding cache, and global versions/snapshots.
+- **Project config**: `.raggai/config.toml` (`domain`, `include`/overlay, exclusions) and OpenCode integration via `opencode.json`/plugin+skill.
+- **CLI `raggai`**: `doctor`, domain management, OpenCode install/init, search/import/export, context/overlay resolution, incremental hash manifests, configurable exclusions, and timing/cache metrics.
+- **Core/Plugin**: per-domain ports/adapters, vector+graph overlay search, writes to active domain, persistent embedding cache with batching, and best-effort stale/orphan vector cleanup.
+- **Web UI + API**: dashboard, search, records, graph, and snapshots with domain selection, real counts (vector/graph), and paginated records.
+- **Graph extraction pipeline (Phase 1)**: enriched fact model (`confidence`, `method`, `sourcePath`, `sourceHash`, `evidence`) persisted as edge provenance; `GraphStorePort` gained `upsertFacts` (merge/dedupe by subject × predicate × object, cross-source evidence accumulation) and `removeFactsBySource` (prune stale facts on reindex/delete, orphan-node cleanup); extraction runs through `GraphExtractionPort` with a deterministic markdown rule (parity with the previous `[Entity] relation [Target]` bullet-line import, now incremental and provenance-aware). Import output and plugin tools report fact metrics (`facts/created/merged/rejected/pruned`). Code extraction (imports/symbols) and richer markdown rules are scheduled in later phases; model-assisted enrichment will be strictly opt-in behind the same port.
 
----
+## Pending items (roadmap)
 
-## 🧹 Maintenance and Index Reset
+1. **Complete embedding cache/batching in indexing**
+   - Apply `generateMany`/batching consistently across all ingestion flows (including chunking variations), aggregate hit/miss metrics per operation, and ensure uniform flush/sharing across CLI, plugin, and API.
+2. **End-to-end validation/security and exclusions**
+   - Honor `excludeDirs/excludePatterns` from TOML in all commands, web endpoints, and tools; harden path/domain/output validation across the entire surface and expose clear defaults/diagnostics. (Fresh global+project install was revalidated manually — `doctor`/`search`/API/UI OK — but automated coverage is missing.)
+3. **Incremental, orphans, and vector performance**
+   - Make physical cleanup of stale/orphan **vectors** in LanceDB robust (beyond best-effort/API-dependent behavior) and reindexing safe. Graph-side stale-fact pruning by source is done since Phase 1 (`removeFactsBySource`); vector-side deletion and per-stage metrics are the remaining work.
+4. **Multi-domain UI/API management**
+   - Refine UX and operations: filters, action feedback (audit/export/reset/snapshots), overlay/context indicators, robust totals/pagination in all scenarios, and more complete domain management.
+5. **Multi-domain snapshots/versioning**
+   - Evolve to domain-scoped snapshot/restore for the new model (`~/.config/raggai/domains/*`) with safe confirmations, selectable scope, and consistent CLI/UI/API integration.
+6. **Fully autonomous global distribution**
+   - Ensure `raggai` is on PATH in global installs (`bun link`/install) and runs autonomously outside the repo (assets, native deps, `dist/src`), validating `raggai opencode install|init` in a clean environment/project.
+7. **E2E and OpenCode integration**
+   - Full external end-to-end tests: `init` → `import` → `search` → plugin/OpenCode and UI, covering global vs local, project context, overlay, and write isolation.
+8. **Graph extraction pipeline — remaining phases**
+   - (Phase 1 foundation done — see "Graph extraction pipeline" in AGENTS.md: enriched facts with provenance/confidence, idempotent upsert/prune, import-time metrics, legacy markdown rule parity.)
+   - Phase 2: richer markdown rules (frontmatter/metadata, headings/lists, links, simple tables), canonical predicate vocabulary with alias map.
+   - Phase 3: code extraction (imports, symbol definitions, extends/implements) behind `GraphExtractionPort`.
+   - Phase 4: graph analytics in UI/CLI (facts by method/confidence, filters, actionable audit).
+   - Phase 5: opt-in model-assisted extraction (`rules` default; `hybrid`/`llm` behind config), schema-validated output, thresholds, budget/timeout limits.
+   - Phase 6: optional AST/tree-sitter adapters behind `GraphExtractionPort`; `minConfidence` configurable via TOML (`graph.extraction.*`) instead of env.
 
-If switching test repos or wanting to start fresh:
+## License
 
-```bash
-bun reset_indexes.ts
-```
-
-Clears: `data/vector_store/` + `data/test_store/` + `data/graph_store.json`. Recreates `data/` if needed.
-
----
-
-## ⚖️ License
-
-Open-source project developed strictly for data privacy, local infrastructure optimization, and advanced AI agent engineering.
+Open-source project focused on data privacy, local infrastructure optimization, and advanced AI agent engineering.

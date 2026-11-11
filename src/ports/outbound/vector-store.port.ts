@@ -10,4 +10,6 @@ export interface VectorStorePort {
     k?: number,
   ): Promise<{ id: string; score: number; meta?: Record<string, unknown> }[]>;
   clear(): Promise<void>;
+  deleteByPath?(filePath: string): Promise<void | { deleted: boolean; method?: string; error?: string }>;
+  count?(): Promise<number | null>;
 }
