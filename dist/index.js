@@ -54668,8 +54668,8 @@ function tool(input) {
 }
 tool.schema = exports_external;
 // src/adapters/inbound/agent-plugin/tool-exports.ts
-import * as fs8 from "fs";
-import * as path7 from "path";
+import * as fs9 from "fs";
+import * as path8 from "path";
 import * as crypto3 from "crypto";
 
 // src/config/raggai-paths.ts
@@ -56235,6 +56235,396 @@ function docEntityName(sourcePath) {
   return safeDecodeUri(dot > 0 ? base.slice(0, dot) : base);
 }
 
+// src/adapters/outbound/extraction/code.extraction.ts
+import * as fs2 from "fs";
+import * as path2 from "path";
+var CONF = { import: 0.8, importWeak: 0.6, symbol: 0.8, inherit: 0.85 };
+var NODE_BUILTINS = new Set([
+  "fs",
+  "path",
+  "crypto",
+  "url",
+  "http",
+  "https",
+  "os",
+  "stream",
+  "events",
+  "util",
+  "buffer",
+  "child_process",
+  "worker_threads",
+  "assert",
+  "zlib",
+  "net",
+  "tty",
+  "vm",
+  "readline",
+  "async_hooks",
+  "perf_hooks",
+  "bun",
+  "node:test"
+]);
+var PY_STDLIB = new Set([
+  "os",
+  "sys",
+  "re",
+  "json",
+  "pathlib",
+  "typing",
+  "dataclasses",
+  "collections",
+  "itertools",
+  "functools",
+  "logging",
+  "datetime",
+  "math",
+  "io",
+  "enum",
+  "abc",
+  "subprocess",
+  "shutil",
+  "glob",
+  "argparse",
+  "asyncio",
+  "copy",
+  "hashlib",
+  "importlib",
+  "inspect",
+  "uuid",
+  "time",
+  "unittest",
+  "textwrap",
+  "warnings",
+  "string",
+  "random",
+  "threading",
+  "multiprocessing",
+  "queue",
+  "signal",
+  "socket",
+  "struct",
+  "csv",
+  "sqlite3",
+  "pickle",
+  "tempfile",
+  "traceback",
+  "contextlib",
+  "operator",
+  "numbers",
+  "decimal",
+  "fractions",
+  "secrets",
+  "base64",
+  "binascii"
+]);
+var GO_STD_FIRST = new Set([
+  "fmt",
+  "os",
+  "io",
+  "strings",
+  "sync",
+  "time",
+  "errors",
+  "context",
+  "math",
+  "sort",
+  "bytes",
+  "bufio",
+  "strconv",
+  "unicode",
+  "regexp",
+  "flag",
+  "log",
+  "embed",
+  "maps",
+  "slices",
+  "log/slog"
+]);
+var GO_STD_PREFIX = ["net/", "net", "encoding/", "crypto/", "database/", "debug/", "expvar", "mime/", "path/", "text/", "html/", "runtime/", "testing", "unsafe", "syscall"];
+function stripGenerics(s) {
+  let t = s, prev;
+  do {
+    prev = t;
+    t = t.replace(/<[^<>]*>/g, "");
+  } while (t !== prev);
+  return t.trim();
+}
+function lastSegment(s) {
+  const segs = s.split(/[./]/).filter(Boolean);
+  return segs.length ? segs[segs.length - 1] : s;
+}
+function rootPackage(spec) {
+  if (spec.startsWith("@")) {
+    const [scope, name2] = spec.split("/");
+    return name2 ? `${scope}/${name2}` : scope;
+  }
+  return spec.split("/")[0];
+}
+function snippet(s) {
+  return s.replace(/\s+/g, " ").trim().slice(0, 120);
+}
+function resolveRelativeModule(fromFile, spec) {
+  const base = path2.resolve(path2.dirname(fromFile), spec);
+  const exts = [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".json"];
+  const candidates = [base, ...exts.map((e) => base + e), ...exts.map((e) => path2.join(base, "index" + e))];
+  for (const c of candidates) {
+    try {
+      if (fs2.statSync(c).isFile())
+        return { name: docEntityName(c), resolved: true };
+    } catch {}
+  }
+  const name2 = spec.replace(/^(\.\/|\.\.\/)+/, "").replace(/\.(ts|tsx|js|jsx|mjs|cjs|json)$/i, "").replace(/\/index$/i, "");
+  return { name: name2, resolved: false };
+}
+function emitImport(spec, evidence, input, doc, emit) {
+  const clean = spec.trim().replace(/^node:/, "");
+  if (!clean)
+    return;
+  if (clean.startsWith(".")) {
+    const { name: name2, resolved } = resolveRelativeModule(input.path, clean);
+    if (isValidEntity(name2))
+      emit(doc, "depends_on", name2, resolved ? CONF.import : CONF.importWeak, "import", snippet(evidence));
+    return;
+  }
+  if (clean.startsWith("/") || clean.startsWith("~") || clean.startsWith("@/") || clean.startsWith("#"))
+    return;
+  if (NODE_BUILTINS.has(clean.split("/")[0]))
+    return;
+  const pkg = rootPackage(clean);
+  if (isValidEntity(pkg))
+    emit(doc, "depends_on", pkg, CONF.import, "import", snippet(evidence));
+}
+var TOP_ANCHOR = /^\S/;
+function scanJsLike(input, doc, emit) {
+  const text = input.text;
+  const spans = [];
+  for (const m of text.matchAll(/(?:import|export)\s+[^'"]*\bfrom\s*['"]([^'"]+)['"]/gs))
+    spans.push({ m, spec: m[1] });
+  for (const m of text.matchAll(/(?:^|\n)\s*import\s*['"]([^'"]+)['"]/g))
+    spans.push({ m, spec: m[1] });
+  for (const m of text.matchAll(/\brequire\(\s*['"]([^'"]+)['"]\s*\)/g))
+    spans.push({ m, spec: m[1] });
+  for (const m of text.matchAll(/\bimport\(\s*['"]([^'"]+)['"]\s*\)/g))
+    spans.push({ m, spec: m[1] });
+  spans.sort((a, b) => (a.m.index ?? 0) - (b.m.index ?? 0));
+  for (const { m, spec } of spans)
+    emitImport(spec, m[0], input, doc, emit);
+  const lines = text.split(`
+`);
+  for (const raw of lines) {
+    if (!TOP_ANCHOR.test(raw))
+      continue;
+    const line = raw.trim();
+    if (line.startsWith("//") || line.startsWith("/*") || line.startsWith("*"))
+      continue;
+    const sym = line.match(/^(?:export\s+)?(?:default\s+)?(?:declare\s+)?(?:abstract\s+)?(?:async\s+)?(class|interface|type|enum|function)\s+([A-Za-z_$][\w$]*)/);
+    const arrowConst = line.match(/^export\s+(?:declare\s+)?(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*[:=]/);
+    if (sym)
+      emit(doc, "defines", sym[2], CONF.symbol, "symbol", snippet(line));
+    else if (arrowConst)
+      emit(doc, "defines", arrowConst[1], CONF.symbol, "symbol", snippet(line));
+    if (sym && (sym[1] === "class" || sym[1] === "interface")) {
+      const name2 = sym[2];
+      const ext = line.match(/\bextends\s+([A-Za-z0-9_$.,\s<>]+?)(?=\s+implements\s|\s*\{|\s*$)/);
+      const impl = line.match(/\bimplements\s+([A-Za-z0-9_$.,\s<>]+?)(?=\s*\{|\s*$)/);
+      const strip = (part) => stripGenerics(part).split(",").map((t) => t.trim().replace(/^readonly\s+/, "")).filter((t) => /^[A-Za-z_$][\w$.]*$/.test(t));
+      for (const t of ext ? strip(ext[1]) : [])
+        emit(name2, "extends", t, CONF.inherit, "inherit", snippet(line));
+      for (const t of impl ? strip(impl[1]) : [])
+        emit(name2, "implements", t, CONF.inherit, "inherit", snippet(line));
+    }
+  }
+}
+function scanPython(input, doc, emit) {
+  const lines = input.text.split(`
+`);
+  let inTriple = false;
+  for (const raw of lines) {
+    const tripleCount = (raw.match(/"""|'''/g) || []).length;
+    const wasInTriple = inTriple;
+    if (tripleCount % 2 === 1)
+      inTriple = !inTriple;
+    if (wasInTriple || tripleCount % 2 === 1 && !wasInTriple && raw.trim().startsWith('"""'))
+      continue;
+    if (inTriple)
+      continue;
+    const trimmed = raw.trim();
+    if (!trimmed || trimmed.startsWith("#"))
+      continue;
+    if (/^\s/.test(raw))
+      continue;
+    const fromM = trimmed.match(/^from\s+(\.*[\w.]+)\s+import\b/);
+    if (fromM) {
+      const mod2 = fromM[1];
+      if (mod2.startsWith(".")) {
+        const dots = mod2.match(/^\.+/)[0].length;
+        const rest = mod2.slice(dots).replace(/\./g, "/");
+        if (rest) {
+          let target = path2.dirname(input.path);
+          for (let i2 = 1;i2 < dots; i2++)
+            target = path2.dirname(target);
+          const base = path2.join(target, rest);
+          for (const c of [base + ".py", path2.join(base, "__init__.py")]) {
+            try {
+              if (fs2.statSync(c).isFile()) {
+                const name2 = docEntityName(c);
+                if (isValidEntity(name2))
+                  emit(doc, "depends_on", name2, CONF.import, "import", snippet(trimmed));
+                break;
+              }
+            } catch {}
+          }
+        }
+      } else {
+        const root = mod2.split(".")[0];
+        if (!PY_STDLIB.has(root) && isValidEntity(root))
+          emit(doc, "depends_on", root, CONF.import, "import", snippet(trimmed));
+      }
+      continue;
+    }
+    const impM = trimmed.match(/^import\s+([\w.]+)/);
+    if (impM) {
+      const root = impM[1].split(".")[0];
+      if (!PY_STDLIB.has(root) && isValidEntity(root))
+        emit(doc, "depends_on", root, CONF.import, "import", snippet(trimmed));
+      continue;
+    }
+    const sym = trimmed.match(/^(?:async\s+)?def\s+([A-Za-z_]\w*)/) ?? trimmed.match(/^class\s+([A-Za-z_]\w*)/);
+    if (sym) {
+      emit(doc, "defines", sym[1], CONF.symbol, "symbol", snippet(trimmed));
+      const cls = trimmed.match(/^class\s+\w+\s*\(([^)]*)\)/);
+      if (cls && sym[1] && trimmed.startsWith("class")) {
+        for (let base of cls[1].split(",")) {
+          base = base.trim().replace(/=.*$/, "");
+          base = stripGenerics(base.replace(/\[[^\]]*\]/g, ""));
+          base = lastSegment(base).trim();
+          if (!base || /^(object|ABC|Generic|Protocol)$/.test(base))
+            continue;
+          if (/^[A-Za-z_]\w*$/.test(base))
+            emit(sym[1], "extends", base, CONF.inherit, "inherit", snippet(trimmed));
+        }
+      }
+    }
+  }
+}
+function isGoStdlib(spec) {
+  const first = spec.split("/")[0];
+  if (GO_STD_FIRST.has(first))
+    return true;
+  if (GO_STD_PREFIX.some((p) => spec === p || spec.startsWith(p)))
+    return true;
+  return !spec.includes(".") && !spec.includes("/");
+}
+function scanGo(input, doc, emit) {
+  const lines = input.text.split(`
+`);
+  let inImportBlock = false;
+  for (const raw of lines) {
+    const trimmed = raw.trim();
+    if (trimmed.startsWith("//"))
+      continue;
+    if (/^import\s*\($/.test(trimmed)) {
+      inImportBlock = true;
+      continue;
+    }
+    if (inImportBlock) {
+      if (trimmed.startsWith(")")) {
+        inImportBlock = false;
+        continue;
+      }
+      const m = trimmed.match(/(?:^[\w.]+\s+)?["]([^"]+)["]/);
+      if (m && !isGoStdlib(m[1]) && isValidEntity(m[1]))
+        emit(doc, "depends_on", m[1], CONF.import, "import", snippet(trimmed));
+      continue;
+    }
+    const single = trimmed.match(/^import\s+["]([^"]+)["]/);
+    if (single) {
+      if (!isGoStdlib(single[1]) && isValidEntity(single[1]))
+        emit(doc, "depends_on", single[1], CONF.import, "import", snippet(trimmed));
+      continue;
+    }
+    if (!/^\S/.test(raw))
+      continue;
+    const fn = trimmed.match(/^func\s+(?:\([^)]*\)\s*)?([A-Za-z_]\w*)\s*\(/);
+    if (fn) {
+      emit(doc, "defines", fn[1], CONF.symbol, "symbol", snippet(trimmed));
+      continue;
+    }
+    const ty = trimmed.match(/^type\s+([A-Za-z_]\w*)\s/);
+    if (ty)
+      emit(doc, "defines", ty[1], CONF.symbol, "symbol", snippet(trimmed));
+  }
+}
+function scanRust(input, doc, emit) {
+  const lines = input.text.split(`
+`);
+  for (const raw of lines) {
+    const trimmed = raw.trim();
+    if (trimmed.startsWith("//"))
+      continue;
+    if (!/^\S/.test(raw))
+      continue;
+    const useM = trimmed.match(/^(?:pub\s+)?use\s+([A-Za-z_][\w]*)(?:::|\s*;)/);
+    if (useM) {
+      const root = useM[1];
+      if (!/^(std|core|alloc|crate|self|super)$/.test(root) && isValidEntity(root))
+        emit(doc, "depends_on", root, CONF.import, "import", snippet(trimmed));
+      continue;
+    }
+    const extCrate = trimmed.match(/^extern\s+crate\s+([A-Za-z_]\w*)/);
+    if (extCrate && isValidEntity(extCrate[1])) {
+      emit(doc, "depends_on", extCrate[1], CONF.import, "import", snippet(trimmed));
+      continue;
+    }
+    const sym = trimmed.match(/^(?:pub\s+)?(?:unsafe\s+)?(?:async\s+)?fn\s+([A-Za-z_]\w*)/) ?? trimmed.match(/^(?:pub\s+)?(?:union\s+|type\s+|const\s+|static\s+)?(struct|enum|trait|mod)\s+([A-Za-z_]\w*)/);
+    if (sym) {
+      const name2 = sym[1] && /^(struct|enum|trait|mod)$/.test(sym[1]) ? sym[2] : sym[1];
+      emit(doc, "defines", name2, CONF.symbol, "symbol", snippet(trimmed));
+    }
+    const traitM = trimmed.match(/^(?:pub\s+)?trait\s+[A-Za-z_]\w*[^:{]*:\s*([^{]+)/);
+    if (traitM) {
+      const traitName = trimmed.match(/^(?:pub\s+)?trait\s+([A-Za-z_]\w*)/)[1];
+      for (const sup of traitM[1].split("+")) {
+        const t = stripGenerics(sup).trim();
+        if (/^[A-Za-z_]\w*$/.test(t))
+          emit(traitName, "extends", t, CONF.inherit, "inherit", snippet(trimmed));
+      }
+    }
+    const implM = trimmed.match(/^impl(?:<[^>]*>)?\s+([A-Za-z_][\w:]*(?:<[^>]*>)?)\s+for\s+([A-Za-z_][\w:]*(?:<[^>]*>)?)/);
+    if (implM) {
+      const trait = stripGenerics(implM[1]).split("::").pop();
+      const type = stripGenerics(implM[2]).split("::").pop();
+      if (/^[A-Za-z_]\w*$/.test(trait) && /^[A-Za-z_]\w*$/.test(type))
+        emit(type, "implements", trait, CONF.inherit, "inherit", snippet(trimmed));
+    }
+  }
+}
+function extractCodeFacts(input) {
+  const facts = [];
+  const seen = new Set;
+  const doc = docEntityName(input.path);
+  const emit = (subject, predicate, object, confidence, method, evidence) => {
+    const s = normalizeEntityText(subject), o = normalizeEntityText(object);
+    if (!isValidEntity(s) || !isValidEntity(o))
+      return;
+    const key = `${predicate}|${s}|${o}`;
+    if (seen.has(key))
+      return;
+    seen.add(key);
+    facts.push({ subject: s, predicate, object: o, confidence, method, sourcePath: input.path, sourceHash: input.hash, evidence: evidence.slice(0, 200) });
+  };
+  const ext = String(input.language ?? path2.extname(input.path).slice(1)).toLowerCase();
+  if (["ts", "tsx", "mts", "cts", "js", "jsx", "mjs", "cjs"].includes(ext))
+    scanJsLike(input, doc, emit);
+  else if (ext === "py")
+    scanPython(input, doc, emit);
+  else if (ext === "go")
+    scanGo(input, doc, emit);
+  else if (ext === "rs")
+    scanRust(input, doc, emit);
+  return facts;
+}
+
 // src/adapters/outbound/extraction/deterministic.extraction.ts
 var LEGACY_FACT_LINE = /-\s*\[([^\]]+)\]\s+([^\[\]\n]+?)\s+\[([^\]]+)\]/;
 var CONFIDENCE = { rule: 0.9, frontmatter: 0.85, table: 0.8, wiki: 0.8, md: 0.75, heading: 0.75 };
@@ -56269,7 +56659,7 @@ function splitFrontmatterList(value) {
 
 class DeterministicExtractionAdapter {
   extract(input) {
-    const facts = input.kind === "note" ? this.extractNote(input) : [];
+    const facts = input.kind === "note" ? this.extractNote(input) : extractCodeFacts(input);
     return { facts, diagnostics: { extracted: facts.length, rejectedLowConfidence: 0 } };
   }
   extractNote(input) {
@@ -56447,12 +56837,12 @@ function calculateReflectOffset(i2, w) {
 }
 
 // node_modules/@xenova/transformers/src/utils/hub.js
-import fs3 from "fs";
-import path3 from "path";
+import fs4 from "fs";
+import path4 from "path";
 
 // node_modules/@xenova/transformers/src/env.js
-import fs2 from "fs";
-import path2 from "path";
+import fs3 from "fs";
+import path3 from "path";
 import url2 from "url";
 
 // node_modules/@xenova/transformers/src/backends/onnx.js
@@ -56477,15 +56867,15 @@ if (typeof process !== "undefined" && process?.release?.name === "node") {
 var { env: onnx_env } = ONNX;
 var VERSION = "2.17.2";
 var WEB_CACHE_AVAILABLE = typeof self !== "undefined" && "caches" in self;
-var FS_AVAILABLE = !isEmpty(fs2);
-var PATH_AVAILABLE = !isEmpty(path2);
+var FS_AVAILABLE = !isEmpty(fs3);
+var PATH_AVAILABLE = !isEmpty(path3);
 var RUNNING_LOCALLY = FS_AVAILABLE && PATH_AVAILABLE;
-var __dirname2 = RUNNING_LOCALLY ? path2.dirname(path2.dirname(url2.fileURLToPath(import.meta.url))) : "./";
-var DEFAULT_CACHE_DIR = RUNNING_LOCALLY ? path2.join(__dirname2, "/.cache/") : null;
+var __dirname2 = RUNNING_LOCALLY ? path3.dirname(path3.dirname(url2.fileURLToPath(import.meta.url))) : "./";
+var DEFAULT_CACHE_DIR = RUNNING_LOCALLY ? path3.join(__dirname2, "/.cache/") : null;
 var DEFAULT_LOCAL_MODEL_PATH = "/models/";
-var localModelPath = RUNNING_LOCALLY ? path2.join(__dirname2, DEFAULT_LOCAL_MODEL_PATH) : DEFAULT_LOCAL_MODEL_PATH;
+var localModelPath = RUNNING_LOCALLY ? path3.join(__dirname2, DEFAULT_LOCAL_MODEL_PATH) : DEFAULT_LOCAL_MODEL_PATH;
 if (onnx_env?.wasm) {
-  onnx_env.wasm.wasmPaths = RUNNING_LOCALLY ? path2.join(__dirname2, "/dist/") : `https://cdn.jsdelivr.net/npm/@xenova/transformers@${VERSION}/dist/`;
+  onnx_env.wasm.wasmPaths = RUNNING_LOCALLY ? path3.join(__dirname2, "/dist/") : `https://cdn.jsdelivr.net/npm/@xenova/transformers@${VERSION}/dist/`;
 }
 var env = {
   backends: {
@@ -56526,11 +56916,11 @@ class FileResponse {
   constructor(filePath) {
     this.filePath = filePath;
     this.headers = new Headers;
-    this.exists = fs3.existsSync(filePath);
+    this.exists = fs4.existsSync(filePath);
     if (this.exists) {
       this.status = 200;
       this.statusText = "OK";
-      let stats = fs3.statSync(filePath);
+      let stats = fs4.statSync(filePath);
       this.headers.set("content-length", stats.size.toString());
       this.updateContentType();
       let self2 = this;
@@ -56561,15 +56951,15 @@ class FileResponse {
     return response;
   }
   async arrayBuffer() {
-    const data = await fs3.promises.readFile(this.filePath);
+    const data = await fs4.promises.readFile(this.filePath);
     return data.buffer;
   }
   async blob() {
-    const data = await fs3.promises.readFile(this.filePath);
+    const data = await fs4.promises.readFile(this.filePath);
     return new Blob([data], { type: this.headers.get("content-type") });
   }
   async text() {
-    const data = await fs3.promises.readFile(this.filePath, "utf8");
+    const data = await fs4.promises.readFile(this.filePath, "utf8");
     return data;
   }
   async json() {
@@ -56635,7 +57025,7 @@ class FileCache {
     this.path = path;
   }
   async match(request) {
-    let filePath = path3.join(this.path, request);
+    let filePath = path4.join(this.path, request);
     let file = new FileResponse(filePath);
     if (file.exists) {
       return file;
@@ -56645,10 +57035,10 @@ class FileCache {
   }
   async put(request, response) {
     const buffer = Buffer.from(await response.arrayBuffer());
-    let outputPath = path3.join(this.path, request);
+    let outputPath = path4.join(this.path, request);
     try {
-      await fs3.promises.mkdir(path3.dirname(outputPath), { recursive: true });
-      await fs3.promises.writeFile(outputPath, buffer);
+      await fs4.promises.mkdir(path4.dirname(outputPath), { recursive: true });
+      await fs4.promises.writeFile(outputPath, buffer);
     } catch (err) {
       console.warn("An error occurred while writing the file to cache:", err);
     }
@@ -68596,8 +68986,8 @@ async function loadItems(mapping, model, pretrainedOptions) {
   return result;
 }
 // src/config/embedding-cache.ts
-import * as fs4 from "fs";
-import * as path4 from "path";
+import * as fs5 from "fs";
+import * as path5 from "path";
 import * as crypto2 from "crypto";
 class EmbeddingCache {
   cacheFile;
@@ -68606,12 +68996,12 @@ class EmbeddingCache {
   hits = 0;
   misses = 0;
   constructor(name2 = "embeddings") {
-    const dir = path4.join(getCacheDir(), "embeddings");
-    fs4.mkdirSync(dir, { recursive: true });
-    this.cacheFile = path4.join(dir, `${name2}.json`);
+    const dir = path5.join(getCacheDir(), "embeddings");
+    fs5.mkdirSync(dir, { recursive: true });
+    this.cacheFile = path5.join(dir, `${name2}.json`);
     try {
-      if (fs4.existsSync(this.cacheFile))
-        this.map = JSON.parse(fs4.readFileSync(this.cacheFile, "utf-8"));
+      if (fs5.existsSync(this.cacheFile))
+        this.map = JSON.parse(fs5.readFileSync(this.cacheFile, "utf-8"));
     } catch {
       this.map = {};
     }
@@ -68639,7 +69029,7 @@ class EmbeddingCache {
     if (!this.dirty)
       return;
     try {
-      fs4.writeFileSync(this.cacheFile, JSON.stringify(this.map));
+      fs5.writeFileSync(this.cacheFile, JSON.stringify(this.map));
       this.dirty = false;
     } catch {}
   }
@@ -68751,7 +69141,7 @@ class XenovaAdapter {
 
 // src/adapters/outbound/lancedb/lancedb.adapter.ts
 var lancedb = __toESM(require_dist2(), 1);
-import * as fs5 from "fs";
+import * as fs6 from "fs";
 class LanceDBAdapter {
   embeddingPort;
   db = null;
@@ -68769,7 +69159,7 @@ class LanceDBAdapter {
       return this.initPromise;
     this.initPromise = (async () => {
       ensureDomain(this.domain, this.domain === "global" ? "global" : "custom");
-      fs5.mkdirSync(this.vectorDir, { recursive: true });
+      fs6.mkdirSync(this.vectorDir, { recursive: true });
       this.db = await lancedb.connect(this.vectorDir);
       try {
         this.table = await this.db.openTable("memoria_vetorial");
@@ -68839,8 +69229,8 @@ class LanceDBAdapter {
     }));
   }
   async clear() {
-    if (fs5.existsSync(this.vectorDir))
-      fs5.rmSync(this.vectorDir, { recursive: true, force: true });
+    if (fs6.existsSync(this.vectorDir))
+      fs6.rmSync(this.vectorDir, { recursive: true, force: true });
     this.table = null;
     this.db = null;
     this.initPromise = null;
@@ -68849,8 +69239,8 @@ class LanceDBAdapter {
 
 // src/adapters/outbound/graphology/json-graph.adapter.ts
 var import_graphology = __toESM(require_graphology_cjs(), 1);
-import * as fs6 from "fs";
-import * as path5 from "path";
+import * as fs7 from "fs";
+import * as path6 from "path";
 function getLevenshteinDistance(a, b) {
   const matrix = [];
   for (let i2 = 0;i2 <= b.length; i2++) {
@@ -68881,9 +69271,9 @@ class JsonGraphAdapter {
   constructor(opts) {
     this.domain = opts?.domain || process.env.RAGGAI_DOMAIN || "global";
     this.graphFile = opts?.graphFile || getGraphFile(this.domain);
-    this.graph = new import_graphology.default;
+    this.graph = new import_graphology.default({ multi: true });
     this.load();
-    if (!fs6.existsSync(this.graphFile))
+    if (!fs7.existsSync(this.graphFile))
       this.save();
   }
   validateAndFindEntity(name2) {
@@ -68891,11 +69281,13 @@ class JsonGraphAdapter {
     if (!cleanName)
       return "EmptyEntity";
     const normalizedTarget = cleanName.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    const wordLike = /^[a-z0-9]+$/i.test(cleanName.normalize("NFD").replace(/[\u0300-\u036f]/g, ""));
     for (const node of this.graph.nodes()) {
       const normalizedNode = node.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
       if (normalizedTarget === normalizedNode)
         return node;
-      if (cleanName.length > 4 && normalizedTarget.charAt(0) === normalizedNode.charAt(0) && getLevenshteinDistance(cleanName.toLowerCase(), node.toLowerCase()) <= 2)
+      const nodeWordLike = /^[a-z0-9]+$/i.test(node.normalize("NFD").replace(/[\u0300-\u036f]/g, ""));
+      if (wordLike && nodeWordLike && cleanName.length > 4 && normalizedTarget.charAt(0) === normalizedNode.charAt(0) && getLevenshteinDistance(cleanName.toLowerCase(), node.toLowerCase()) <= 2)
         return node;
     }
     return cleanName;
@@ -69001,13 +69393,16 @@ class JsonGraphAdapter {
   searchConnections(keyword) {
     if (!this.graph.hasNode(keyword))
       return [];
-    return this.graph.neighbors(keyword).map((neighbor) => {
-      const edgeKey = this.graph.edge(keyword, neighbor);
-      if (!edgeKey)
-        return `Structured fact: [${keyword}] -> (?) -> [${neighbor}]`;
+    const lines = [];
+    const render = (from, to, edgeKey) => {
       const attrs = this.graph.getEdgeAttributes(edgeKey);
-      return `Structured fact: [${keyword}] -> (${attrs?.relation ?? "?"}) -> [${neighbor}]`;
-    }).filter(Boolean);
+      lines.push(`Structured fact: [${from}] -> (${attrs?.relation ?? "?"}) -> [${to}]`);
+    };
+    for (const edge of this.graph.outEdges(keyword))
+      render(keyword, this.graph.target(edge), edge);
+    for (const edge of this.graph.inEdges(keyword))
+      render(this.graph.source(edge), keyword, edge);
+    return lines;
   }
   auditAndExportTree() {
     let nosRemovidos = 0;
@@ -69065,34 +69460,34 @@ class JsonGraphAdapter {
     const nodes = this.graph.nodes().map((node) => ({ id: node, label: node, shape: "dot", size: 20 }));
     const edges = this.graph.edges().map((e) => ({ from: this.graph.source(e), to: this.graph.target(e), label: this.graph.getEdgeAttributes(e).relation, arrows: "to" }));
     const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Knowledge Graph</title><script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script><style>body{margin:0}#m{width:100vw;height:100vh}</style></head><body><div id="m"></div><script>new vis.Network(document.getElementById('m'),{nodes:new vis.DataSet(${JSON.stringify(nodes)}),edges:new vis.DataSet(${JSON.stringify(edges)})},{physics:{stabilization:true}})</script></body></html>`;
-    fs6.mkdirSync(path5.dirname(outputPath), { recursive: true });
-    fs6.writeFileSync(outputPath, html, "utf-8");
+    fs7.mkdirSync(path6.dirname(outputPath), { recursive: true });
+    fs7.writeFileSync(outputPath, html, "utf-8");
   }
   clear() {
     this.graph.clear();
-    if (fs6.existsSync(this.graphFile))
-      fs6.unlinkSync(this.graphFile);
+    if (fs7.existsSync(this.graphFile))
+      fs7.unlinkSync(this.graphFile);
   }
   getRaw() {
     return this.graph.export();
   }
   save() {
     ensureDomain(this.domain, this.domain === "global" ? "global" : "custom");
-    fs6.mkdirSync(path5.dirname(this.graphFile), { recursive: true });
-    fs6.writeFileSync(this.graphFile, JSON.stringify(this.graph.export(), null, 2));
+    fs7.mkdirSync(path6.dirname(this.graphFile), { recursive: true });
+    fs7.writeFileSync(this.graphFile, JSON.stringify(this.graph.export(), null, 2));
   }
   load() {
-    if (fs6.existsSync(this.graphFile)) {
+    if (fs7.existsSync(this.graphFile)) {
       try {
-        this.graph.import(JSON.parse(fs6.readFileSync(this.graphFile, "utf-8")));
+        this.graph.import(JSON.parse(fs7.readFileSync(this.graphFile, "utf-8")));
       } catch {}
     }
   }
 }
 
 // src/config/fs-utils.ts
-import * as fs7 from "fs";
-import * as path6 from "path";
+import * as fs8 from "fs";
+import * as path7 from "path";
 var DEFAULT_EXCLUDE_DIRS = new Set(["node_modules", ".git", "dist", "data", ".opencode", ".idea", "build", "coverage", ".next", ".turbo", ".cache"]);
 var DEFAULT_EXCLUDE_FILES = [/\.env(\.|$)/i, /secret/i, /credential/i, /\.pem$/i, /\.key$/i, /id_rsa/i, /\.sqlite$/i, /\.db$/i, /token/i];
 function compilePatterns(patterns) {
@@ -69105,7 +69500,7 @@ function compilePatterns(patterns) {
   return out;
 }
 function isSensitivePath(p, extraPatterns) {
-  const base = path6.basename(p);
+  const base = path7.basename(p);
   const all = [...DEFAULT_EXCLUDE_FILES, ...extraPatterns || []];
   return all.some((r) => r.test(base) || r.test(p));
 }
@@ -69117,12 +69512,12 @@ function walkFiles(root, opts) {
   const exts = opts?.exts;
   const extraDirs = opts?.excludeDirs?.length ? new Set(opts.excludeDirs) : undefined;
   const extraPatterns = compilePatterns(opts?.excludePatterns);
-  const st = fs7.statSync(root);
+  const st = fs8.statSync(root);
   if (st.isFile()) {
-    const fp = path6.resolve(root);
+    const fp = path7.resolve(root);
     if (isSensitivePath(fp, extraPatterns))
       return [];
-    const ext = path6.basename(fp).split(".").pop()?.toLowerCase() || "";
+    const ext = path7.basename(fp).split(".").pop()?.toLowerCase() || "";
     if (exts && !exts.has(ext))
       return [];
     return [fp];
@@ -69130,12 +69525,12 @@ function walkFiles(root, opts) {
   const walk = (dir) => {
     let entries = [];
     try {
-      entries = fs7.readdirSync(dir, { withFileTypes: true });
+      entries = fs8.readdirSync(dir, { withFileTypes: true });
     } catch {
       return;
     }
     for (const e of entries) {
-      const fp = path6.join(dir, e.name);
+      const fp = path7.join(dir, e.name);
       if (e.isDirectory()) {
         if (shouldExcludeDir(e.name, extraDirs))
           continue;
@@ -69150,7 +69545,7 @@ function walkFiles(root, opts) {
       }
     }
   };
-  walk(path6.resolve(root));
+  walk(path7.resolve(root));
   return out;
 }
 function walkCodeFiles(root, opts) {
@@ -69178,18 +69573,18 @@ function hashContent(s) {
   return crypto3.createHash("sha256").update(s).digest("hex");
 }
 function manifestPath(domain) {
-  return path7.join(getDomainDir(domain), "index-manifest.json");
+  return path8.join(getDomainDir(domain), "index-manifest.json");
 }
 function loadManifest(domain) {
   try {
-    return JSON.parse(fs8.readFileSync(manifestPath(domain), "utf-8"));
+    return JSON.parse(fs9.readFileSync(manifestPath(domain), "utf-8"));
   } catch {
     return {};
   }
 }
 function saveManifest(domain, m) {
-  fs8.mkdirSync(getDomainDir(domain), { recursive: true });
-  fs8.writeFileSync(manifestPath(domain), JSON.stringify(m, null, 2));
+  fs9.mkdirSync(getDomainDir(domain), { recursive: true });
+  fs9.writeFileSync(manifestPath(domain), JSON.stringify(m, null, 2));
 }
 var consult_memory_personal = tool({
   name: "consult_memory_personal",
@@ -69243,15 +69638,15 @@ var import_markdown_notes = tool({
   inputSchema: { type: "object", properties: { targetPath: { type: "string" } }, required: ["targetPath"] },
   execute: async ({ targetPath }) => {
     const t0 = Date.now();
-    const pResolved = path7.resolve(targetPath);
-    if (!fs8.existsSync(pResolved))
+    const pResolved = path8.resolve(targetPath);
+    if (!fs9.existsSync(pResolved))
       return { error: "Path not found" };
     const ctx = resolveContext();
     const d = ctx.activeDomain;
     ensureDomain(d, d === "global" ? "global" : "project");
     const c = getDomainContainer(d);
     const manifest = loadManifest(d);
-    const files = fs8.statSync(pResolved).isFile() && pResolved.endsWith(".md") ? [pResolved] : walkMarkdownFiles(pResolved, { excludeDirs: ctx.excludeDirs, excludePatterns: ctx.excludePatterns });
+    const files = fs9.statSync(pResolved).isFile() && pResolved.endsWith(".md") ? [pResolved] : walkMarkdownFiles(pResolved, { excludeDirs: ctx.excludeDirs, excludePatterns: ctx.excludePatterns });
     const seen = new Set(files);
     let processed = 0, skipped = 0, chunksTotal = 0, pruned = 0, deleteFailures = 0;
     const graphStats = emptyGraphIngestMetrics();
@@ -69276,7 +69671,7 @@ var import_markdown_notes = tool({
       }
     };
     for (const f of files) {
-      const content = fs8.readFileSync(f, "utf-8");
+      const content = fs9.readFileSync(f, "utf-8");
       const h = hashContent(content);
       if (manifest[f] === h) {
         skipped++;
@@ -69285,13 +69680,13 @@ var import_markdown_notes = tool({
       if (manifest[f])
         await safeDelete(f);
       const chunks = chunkTextWithOverlap(content);
-      await embedSave(chunks.map((chunk) => ({ text: chunk, saveText: `[Note: ${path7.basename(f)}] ${chunk}`, meta: { type: "note", path: f, fileHash: h } })));
+      await embedSave(chunks.map((chunk) => ({ text: chunk, saveText: `[Note: ${path8.basename(f)}] ${chunk}`, meta: { type: "note", path: f, fileHash: h } })));
       addGraphIngestMetrics(graphStats, graphIngestForFile(c.graphPort, c.extractionPort, { kind: "note", path: f, text: content, hash: h }));
       manifest[f] = h;
       processed++;
     }
     for (const old of Object.keys(manifest)) {
-      if (old.startsWith(pResolved) && !seen.has(old) && !fs8.existsSync(old)) {
+      if (old.startsWith(pResolved) && !seen.has(old) && !fs9.existsSync(old)) {
         await safeDelete(old);
         const g = c.graphPort.removeFactsBySource(old);
         graphStats.prunedEdges += g.removedEdges;
@@ -69311,8 +69706,8 @@ var index_local_codebase = tool({
   inputSchema: { type: "object", properties: { repoPath: { type: "string" } }, required: ["repoPath"] },
   execute: async ({ repoPath }) => {
     const t0 = Date.now();
-    const pAbsoluto = path7.resolve(repoPath);
-    if (!fs8.existsSync(pAbsoluto))
+    const pAbsoluto = path8.resolve(repoPath);
+    if (!fs9.existsSync(pAbsoluto))
       return { error: "Path not found" };
     const ctx = resolveContext();
     const d = ctx.activeDomain;
@@ -69345,7 +69740,7 @@ var index_local_codebase = tool({
     };
     for (const f of files) {
       try {
-        const content = fs8.readFileSync(f, "utf-8");
+        const content = fs9.readFileSync(f, "utf-8");
         const h = hashContent(content);
         if (manifest[f] === h) {
           skipped++;
@@ -69361,7 +69756,7 @@ var index_local_codebase = tool({
       } catch {}
     }
     for (const old of Object.keys(manifest)) {
-      if (old.startsWith(pAbsoluto) && !seen.has(old) && !fs8.existsSync(old)) {
+      if (old.startsWith(pAbsoluto) && !seen.has(old) && !fs9.existsSync(old)) {
         await safeDelete(old);
         const g = c.graphPort.removeFactsBySource(old);
         graphStats.prunedEdges += g.removedEdges;
@@ -69403,8 +69798,8 @@ var audit_and_visualize_graph = tool({
     const d = ctx.activeDomain;
     const c = getDomainContainer(d);
     const { relatorio, arvoreVisual } = c.graphPort.auditAndExportTree();
-    const out = path7.join(getDomainDir(d), "auditoria_grafo.md");
-    fs8.writeFileSync(out, `# Audit ${d}
+    const out = path8.join(getDomainDir(d), "auditoria_grafo.md");
+    fs9.writeFileSync(out, `# Audit ${d}
 ${relatorio}
 \`\`\`text
 ${arvoreVisual}
@@ -69420,7 +69815,7 @@ var export_visual_graph_map = tool({
     const ctx = resolveContext();
     const d = ctx.activeDomain;
     const c = getDomainContainer(d);
-    const out = path7.join(getDomainDir(d), "mapa_interativo.html");
+    const out = path8.join(getDomainDir(d), "mapa_interativo.html");
     c.graphPort.exportInteractiveHtml(out);
     return { status: "Success", domain: d, path: out };
   }
@@ -69438,7 +69833,7 @@ var reset_local_memory = tool({
     await c.vectorPort.clear();
     c.graphPort.clear();
     try {
-      fs8.unlinkSync(manifestPath(d));
+      fs9.unlinkSync(manifestPath(d));
     } catch {}
     return { status: "Success", domain: d };
   }

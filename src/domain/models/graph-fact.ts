@@ -13,6 +13,8 @@ export type GraphFactMethod =
   | "link" // extraction from wikilinks / local markdown links
   | "table" // simple markdown tables (predicate or triple headers)
   | "symbol" // deterministic code symbol extraction
+  | "import" // code import statements
+  | "inherit" // extends / implements / impl ... for ...
   | "llm" // model-assisted extraction (opt-in)
   | "manual"; // user-provided fact (e.g. memorize_personal_fact)
 

@@ -2,12 +2,12 @@ import type { GraphExtractionPort } from "../../../ports/outbound/graph-extracti
 import type { ExtractionInput, ExtractionResult, EnrichedFact } from "../../../domain/models/graph-fact.ts";
 import { canonicalPredicate, isKnownPredicate } from "../../../domain/services/predicate-vocab.ts";
 import { docEntityName, isValidEntity, normalizeEntityText } from "../../../domain/services/entity-utils.ts";
+import { extractCodeFacts } from "./code.extraction.ts";
 
 /**
  * Phase 2 deterministic extractor (notes / markdown).
  *
- * Rules, in priority order, all incremental and provenance-aware. Code files
- * are an intentional no-op until Phase 3.
+ * Rules, in priority order, all incremental and provenance-aware.
  *
  *  1. Legacy line rule (method `rule`, confidence 0.9): `- [A] rel [B]`.
  *  2. YAML frontmatter (`frontmatter`, 0.85): keys that map to the canonical
@@ -25,6 +25,8 @@ import { docEntityName, isValidEntity, normalizeEntityText } from "../../../doma
  *
  * Code fences (``` / ~~~) are ignored entirely so examples and samples
  * never produce facts.
+ *
+ * `kind: "code"` delegates to `./code.extraction.ts` (Phase 3).
  */
 const LEGACY_FACT_LINE = /-\s*\[([^\]]+)\]\s+([^\[\]\n]+?)\s+\[([^\]]+)\]/;
 const CONFIDENCE = { rule: 0.9, frontmatter: 0.85, table: 0.8, wiki: 0.8, md: 0.75, heading: 0.75 } as const;
@@ -53,7 +55,7 @@ function splitFrontmatterList(value: string): string[] {
 
 export class DeterministicExtractionAdapter implements GraphExtractionPort {
   extract(input: ExtractionInput): ExtractionResult {
-    const facts = input.kind === "note" ? this.extractNote(input) : [];
+    const facts = input.kind === "note" ? this.extractNote(input) : extractCodeFacts(input);
     return { facts, diagnostics: { extracted: facts.length, rejectedLowConfidence: 0 } };
   }
 

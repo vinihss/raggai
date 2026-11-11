@@ -32,7 +32,9 @@ export class JsonGraphAdapter implements GraphStorePort {
   constructor(opts?: JsonGraphAdapterOptions) {
     this.domain = opts?.domain || process.env.RAGGAI_DOMAIN || "global";
     this.graphFile = opts?.graphFile || getGraphFile(this.domain);
-    this.graph = new Graph();
+    // Multi graph: one edge per (subject × predicate × object); distinct
+    // relations between the same collapsed node pair must coexist.
+    this.graph = new Graph({ multi: true });
     this.load();
     // Persist an (empty) graph file on first open so health checks and the
     // web UI can consistently distinguish "empty" from "missing store".
@@ -43,12 +45,16 @@ export class JsonGraphAdapter implements GraphStorePort {
     const cleanName = name.trim();
     if (!cleanName) return "EmptyEntity";
     const normalizedTarget = cleanName.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    const wordLike = /^[a-z0-9]+$/i.test(cleanName.normalize("NFD").replace(/[\u0300-\u036f]/g, ""));
     for (const node of this.graph.nodes()) {
       const normalizedNode = node.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
       if (normalizedTarget === normalizedNode) return node;
-      // Typo tolerance only when the first character matches — prevents merging
-      // distinct entities that are merely within edit-distance 2 (e.g. "delta" into "beta").
+      // Typo tolerance only for plain word-like entities (e.g. "Graphology").
+      // Structured names (dots, dashes, spaces, mixed case identifiers) are
+      // exact-match only — fuzzy merging folds code symbols into modules otherwise.
+      const nodeWordLike = /^[a-z0-9]+$/i.test(node.normalize("NFD").replace(/[\u0300-\u036f]/g, ""));
       if (
+        wordLike && nodeWordLike &&
         cleanName.length > 4 &&
         normalizedTarget.charAt(0) === normalizedNode.charAt(0) &&
         getLevenshteinDistance(cleanName.toLowerCase(), node.toLowerCase()) <= 2
@@ -185,12 +191,14 @@ export class JsonGraphAdapter implements GraphStorePort {
 
   searchConnections(keyword: string): string[] {
     if (!this.graph.hasNode(keyword)) return [];
-    return this.graph.neighbors(keyword).map((neighbor) => {
-      const edgeKey = this.graph.edge(keyword, neighbor);
-      if (!edgeKey) return `Structured fact: [${keyword}] -> (?) -> [${neighbor}]`;
+    const lines: string[] = [];
+    const render = (from: string, to: string, edgeKey: string) => {
       const attrs = this.graph.getEdgeAttributes(edgeKey);
-      return `Structured fact: [${keyword}] -> (${attrs?.relation ?? "?"}) -> [${neighbor}]`;
-    }).filter(Boolean) as string[];
+      lines.push(`Structured fact: [${from}] -> (${attrs?.relation ?? "?"}) -> [${to}]`);
+    };
+    for (const edge of this.graph.outEdges(keyword)) render(keyword, this.graph.target(edge), edge);
+    for (const edge of this.graph.inEdges(keyword)) render(this.graph.source(edge), keyword, edge);
+    return lines;
   }
 
   auditAndExportTree(): { relatorio: string; arvoreVisual: string } {

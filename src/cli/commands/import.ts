@@ -29,6 +29,12 @@ export async function importCommand(sub: string | undefined, rest: string[]) {
   const stat = fs.statSync(p);
   const manifest = loadManifest(domain);
   const walkOpts = { excludeDirs: ctx.excludeDirs, excludePatterns: ctx.excludePatterns };
+  let failedFiles = 0;
+  const warnFailed = (f: string, err: unknown) => {
+    failedFiles++;
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn(`  warn: ${f}: ${msg}`);
+  };
   let count=0, processed=0, skipped=0, pruned=0, deleteFailures=0;
   let tScan=0, tEmbed=0, tWrite=0, tPrune=0;
   const graphStats = emptyGraphIngestMetrics();
@@ -81,6 +87,7 @@ export async function importCommand(sub: string | undefined, rest: string[]) {
     }
     tPrune += Date.now() - p0;
     saveManifest(domain, manifest);
+  if (failedFiles > 0) console.warn(`  warn: ${failedFiles} file(s) failed during import (see above)`);
     c.embeddingPort.flushCache?.();
     const cacheStats = c.embeddingPort.getCacheStats?.();
     const cacheInfo = cacheStats ? `, cache hits=${cacheStats.hits} misses=${cacheStats.misses}` : "";
@@ -103,7 +110,7 @@ export async function importCommand(sub: string | undefined, rest: string[]) {
       await embedAndSave(items);
       addGraphIngestMetrics(graphStats, graphIngestForFile(c.graphPort, c.extractionPort, { kind: "code", path: f, text: content, hash: h, language: f.split(".").pop() }));
       manifest[f]=h; processed++;
-    } catch {}
+    } catch (err) { warnFailed(f, err); }
   }
   const p0 = Date.now();
   for (const old of Object.keys(manifest)) {
@@ -116,6 +123,7 @@ export async function importCommand(sub: string | undefined, rest: string[]) {
   }
   tPrune += Date.now() - p0;
   saveManifest(domain, manifest);
+  if (failedFiles > 0) console.warn(`  warn: ${failedFiles} file(s) failed during import (see above)`);
   c.embeddingPort.flushCache?.();
   const cacheStats = c.embeddingPort.getCacheStats?.();
   const cacheInfo = cacheStats ? `, cache hits=${cacheStats.hits} misses=${cacheStats.misses}` : "";

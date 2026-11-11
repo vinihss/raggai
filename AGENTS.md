@@ -48,7 +48,7 @@ Repo: Bun + TypeScript. Plugin entry `dist/index.js` (built from `src/index.ts`)
 
 ## Graph extraction pipeline (in progress)
 
-Phase 1 (foundation) and Phase 2 (markdown rules) are implemented in `src/`:
+Phases 1–3 (foundation, markdown rules, code rules) are implemented in `src/`:
 - **Model**: `src/domain/models/graph-fact.ts` (`EnrichedFact`, `FactProvenance`, extraction/upsert/remove contracts).
 - **Ports**: `src/ports/outbound/graph-store.port.ts` (`upsertFacts`, `removeFactsBySource`), `src/ports/outbound/graph-extraction.port.ts`.
 - **Extraction** (`src/adapters/outbound/extraction/deterministic.extraction.ts`):
@@ -57,14 +57,15 @@ Phase 1 (foundation) and Phase 2 (markdown rules) are implemented in `src/`:
   - `heading` (0.75): bullets under a predicate heading (e.g. `## Dependencies`) become facts (`<doc> <pred> <bullet>`).
   - `link`: Obsidian wikilinks `[[Target]]` / `[[Target|Alias]]` (0.8) and local markdown links (0.75) become `<doc> references <Target>`; percent-decoded.
   - `table` (0.8): predicate-header tables and entity/relation/target triple tables.
-  - Code fences (` ``` `) are ignored; code files remain a no-op stub until Phase 3.
+  - Code fences (` ``` `) are ignored; code files use `./code.extraction.ts` (Phase 3).
+  - `code.extraction.ts` (Phase 3): `import` (0.8, weak relative 0.6) — ES/CommonJS/multiline imports for TS/JS (relative specifiers resolved to file doc-entities), Python `import`/`from … import` (stdlib skipped), Go `import` (single-segment stdlib skipped), Rust `use`/`extern crate` (`std|core|alloc|crate|self|super` skipped); `defines` (0.8) — TS/JS exported classes/interfaces/types/enums/functions + exported consts, Python `def`/`class`, Go `func` (incl. methods) and `type`, Rust `fn`/`struct|enum|trait|mod`; `inherit` (0.85) — TS `extends`/`implements` (generics stripped), Python class bases (`object|ABC|Generic|Protocol` skipped, `[...]`/kwargs stripped), Rust `impl Trait for Type` → `Type implements Trait`, trait supertraits → `extends`. Node builtins / Go std prefixes skipped; subject is the file doc-entity (e.g. `xenova.adapter`), inherit edges use the symbol as subject (e.g. `XenovaAdapter`).
   - Predicate normalization + alias map (`src/domain/services/predicate-vocab.ts`): canonical set `uses, depends_on, contains, defines, references, implements, calls, extends, part_of`; unknown predicates pass through as lower_snake_case.
 - **Ingest**: `src/domain/services/graph-ingest.ts` (prune-stale by `sourceHash` → extract → confidence filter → upsert; aggregate CLI/plugin metrics).
 - **Store**: `src/adapters/outbound/graphology/json-graph.adapter.ts` persists provenance/confidence/occurrences on edges (backward-compatible with legacy edges; first-open persists the empty graph file). Entity typo-merge requires a matching first character (avoids merging distinct entities like `delta` → `beta`).
 - Import flows (`raggai import` and plugin `import_markdown_notes`/`index_local_codebase`) are idempotent w.r.t. graph facts; deleted sources prune their facts and orphan nodes. `raggai import --force` re-extracts unchanged files (needed after extractor upgrades).
 - `bun test_graph_extraction.ts` — extraction regression checks (run after touching the extractor/vocab).
 
-Roadmap: Phase 3 = code extraction (imports/symbols) · Phase 4 = UI/CLI graph analytics · Phase 5 = opt-in model-assisted extraction (validated JSON, thresholds) · Phase 6 = optional AST adapters behind `GraphExtractionPort`.
+Roadmap: Phase 4 = UI/CLI graph analytics · Phase 5 = opt-in model-assisted extraction (validated JSON, thresholds) · Phase 6 = optional AST adapters behind `GraphExtractionPort`.
 
 ## Pending items (documented)
 1. **Complete embedding cache/batching in indexing**: apply `generateMany`/batching and cache metrics consistently across all ingestion flows (CLI/plugin/API).
@@ -74,9 +75,9 @@ Roadmap: Phase 3 = code extraction (imports/symbols) · Phase 4 = UI/CLI graph a
 5. **Multi-domain snapshots/versioning**: domain-scoped snapshot/restore with scope/confirmations and consistent CLI/UI/API integration.
 6. **Fully autonomous global distribution**: `raggai` on PATH in global installs and fully autonomous execution outside the repo (assets/native deps), with `opencode install|init` validated in a clean environment.
 7. **E2E and OpenCode integration**: full external tests (`init` → `import` → `search` → plugin/OpenCode/UI) covering global vs local, project context, overlay, and write isolation.
-8. **Graph extraction pipeline — remaining phases** (Phases 1–2 done, see section above):
-   - Phase 3: code extraction (imports, symbol definitions `class|interface|type|function|def|func|struct|impl`, extends/implements) replacing the `kind: "code"` stub.
+8. **Graph extraction pipeline — remaining phases** (Phases 1–3 done, see section above):
    - Phase 4: graph analytics in UI/CLI (facts by method/confidence, filters, actionable audit).
    - Phase 5: opt-in model-assisted extraction (`rules` default; `hybrid`/`llm` behind config), schema-validated JSON output, thresholds, selective scope, budget/timeout limits.
    - Phase 6: optional AST/tree-sitter adapters behind `GraphExtractionPort` for prioritized languages; move `minConfidence` from env into TOML (`graph.extraction.*`);
-     note: pure markdown yields mostly `references` facts (e.g. Knowledges doc graph); richer relations in this repo's docs will keep the graph sparse until Phase 3 code extraction.
+     note: pure markdown yields mostly `references` facts (e.g. Knowledges doc graph); code extraction (Phase 3) populates the `raggai` domain with dependency/definition/implements edges (240 facts on `./src`).
+     Also: `JsonGraphAdapter` now uses a graphology **multi** graph (distinct relations between the same collapsed node pair coexist), fuzzy entity typo-merge only applies to plain word-like names (structured module/symbol names are exact-match), and the code import path logs per-file failures instead of swallowing them.
