@@ -1,0 +1,61 @@
+// Package ping implements the Ping use case.
+//
+// Regra do guia (A1/A2): um pacote por responsabilidade de caso de uso; recebe
+// ctx, depende apenas de domain e ports, e não conhece http.Request nem pgx.
+package ping
+
+import (
+	"context"
+	"fmt"
+	"time"
+
+	domainping "__MODULE__/internal/domain/ping"
+	"__MODULE__/internal/ports/clock"
+	"__MODULE__/internal/ports/id"
+	"__MODULE__/internal/ports/repositories"
+)
+
+// Input is the use case input.
+//
+// Regra do guia (A3): DTO de caso de uso não é DTO de HTTP nem linha de banco.
+type Input struct {
+	Message string
+}
+
+// Output is the use case result.
+type Output struct {
+	ID        string
+	Message   string
+	CreatedAt time.Time
+}
+
+// Service orchestrates the Ping use case.
+type Service struct {
+	repo  repositories.PingRepository
+	clock clock.Clock
+	ids   id.Generator
+}
+
+// NewService wires the use case dependencies. Retorna struct concreta
+// (G6: accept interfaces, return structs).
+func NewService(repo repositories.PingRepository, clk clock.Clock, ids id.Generator) *Service {
+	return &Service{repo: repo, clock: clk, ids: ids}
+}
+
+// Execute validates, builds and persists a Ping.
+func (s *Service) Execute(ctx context.Context, in Input) (Output, error) {
+	aggregate, err := domainping.New(s.ids.New(), in.Message, s.clock.Now())
+	if err != nil {
+		return Output{}, err
+	}
+
+	if err := s.repo.Save(ctx, aggregate); err != nil {
+		return Output{}, fmt.Errorf("save ping: %w", err)
+	}
+
+	return Output{
+		ID:        aggregate.ID(),
+		Message:   aggregate.Message(),
+		CreatedAt: aggregate.CreatedAt(),
+	}, nil
+}

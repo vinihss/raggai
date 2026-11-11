@@ -1,0 +1,25 @@
+package app
+
+import (
+	"context"
+	"log/slog"
+
+	"__MODULE__/internal/infrastructure/clock"
+	"__MODULE__/internal/infrastructure/config"
+	"__MODULE__/internal/infrastructure/id"
+)
+
+// buildDependencies wires the process-wide ports.
+func buildDependencies(_ context.Context, _ config.Config, log *slog.Logger) (Dependencies, func(), error) {
+	deps := Dependencies{
+		Log:   log,
+		Clock: clock.System{},
+		IDs:   id.Random{},
+	}
+	return deps, func() {}, nil
+}
+
+// Ready reports whether the process can serve traffic.
+func (Dependencies) Ready() func(context.Context) error {
+	return func(context.Context) error { return nil }
+}

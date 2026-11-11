@@ -1,0 +1,56 @@
+//go:build integration
+
+package integration_test
+
+import (
+	"context"
+	"os"
+	"testing"
+	"time"
+
+	"github.com/jackc/pgx/v5/pgxpool"
+
+	"__MODULE__/internal/adapters/outbound/postgres"
+	domainping "__MODULE__/internal/domain/ping"
+)
+
+// Regra do guia (T4): integração usa Postgres real e -race. Rode com:
+//   DATABASE_URL=... go test -tags=integration ./tests/...
+func TestPingRepositoryRoundTrip(t *testing.T) {
+	dsn := os.Getenv("DATABASE_URL")
+	if dsn == "" {
+		t.Skip("DATABASE_URL is required for integration tests")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	pool, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	defer pool.Close()
+
+	// Rerodar o teste no mesmo banco não pode falhar por PK duplicada.
+	if _, err := pool.Exec(ctx, `DELETE FROM pings WHERE id = $1`, "id-integration"); err != nil {
+		t.Fatalf("cleanup: %v", err)
+	}
+
+	repo := postgres.NewPingRepository(pool)
+	aggregate, err := domainping.New("id-integration", "hello", time.Now())
+	if err != nil {
+		t.Fatalf("build aggregate: %v", err)
+	}
+
+	if err := repo.Save(ctx, aggregate); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+
+	got, ok, err := repo.Last(ctx)
+	if err != nil {
+		t.Fatalf("last: %v", err)
+	}
+	if !ok || got.ID() != aggregate.ID() {
+		t.Fatalf("last = (%v, %v), want id %q", got.ID(), ok, aggregate.ID())
+	}
+}

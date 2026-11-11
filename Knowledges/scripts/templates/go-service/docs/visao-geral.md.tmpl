@@ -1,0 +1,48 @@
+# Visão geral
+
+`__SERVICE__` é um serviço HTTP em Go (`__MODULE__`, Go __GO_VERSION__)
+organizado em Clean Architecture + Arquitetura Hexagonal.
+
+> Este documento é **curado**: o scaffold o cria uma única vez e nunca o
+> sobrescreve. Edite à vontade.
+
+## O que este serviço faz
+
+Descreva em uma ou duas frases o problema de negócio que `__SERVICE__`
+resolve. Um bom teste: alguém de fora entende por que o serviço existe sem
+precisar abrir o código.
+
+## Como rodar
+
+```bash
+cp configs/.env.example .env   # ajuste os valores
+make run                       # sobe em :8080
+curl -s localhost:8080/healthz
+```
+
+## Estado atual
+
+- Modo do scaffold: `__MODE__`.
+  - `minimal`: só o esqueleto HTTP, sem feature de exemplo.
+  - `example`: feature `ping` em memória, útil para aprender o fluxo.
+  - `full`: Postgres via pgx, migrations e teste de integração.
+- Features de negócio: veja [Domínio](dominio.md) e `docs/features/`.
+
+## Onde ir agora
+
+| Se você quer… | Leia |
+| --- | --- |
+| Entender as camadas e regras de dependência | [Arquitetura](arquitetura.md) |
+| Saber onde colocar um arquivo novo | [Estrutura de pastas](estrutura.md) |
+| Chamar a API | [API](api.md) |
+| Mexer no banco | [Dados](dados.md) |
+| Configurar o processo | [Configuração](configuracao.md) |
+| Subir e operar | [Operação](operacao.md) |
+| Escrever testes | [Testes](testes.md) |
+| Entender uma decisão de design | [Decisões](decisoes.md) |
+
+## Limites conhecidos
+
+Liste aqui o que o serviço **não** faz hoje (autenticação, multi-tenant,
+cache, filas). Isso evita que o próximo leitor presuma capacidades que não
+existem.

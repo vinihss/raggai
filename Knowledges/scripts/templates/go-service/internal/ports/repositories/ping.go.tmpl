@@ -1,0 +1,18 @@
+// Package repositories declares outbound persistence ports.
+//
+// Regra do guia (P1/P3): interfaces pequenas, orientadas ao uso, declaradas pelo
+// consumidor (application) e implementadas por adapters. Nada de repositório
+// genérico com CRUD universal.
+package repositories
+
+import (
+	"context"
+
+	domainping "__MODULE__/internal/domain/ping"
+)
+
+// PingRepository persists Ping aggregates.
+type PingRepository interface {
+	Save(ctx context.Context, p domainping.Ping) error
+	Last(ctx context.Context) (domainping.Ping, bool, error)
+}

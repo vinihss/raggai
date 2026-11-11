@@ -1,0 +1,65 @@
+{
+  "options": {
+    "type": "mixed",
+    "multi": false,
+    "allowSelfLoops": true
+  },
+  "attributes": {},
+  "nodes": [
+    {
+      "key": "Joao"
+    },
+    {
+      "key": "OpenCode"
+    },
+    {
+      "key": "Maria"
+    },
+    {
+      "key": "Projeto X"
+    },
+    {
+      "key": "Pedro"
+    },
+    {
+      "key": "Go"
+    },
+    {
+      "key": "Rust"
+    }
+  ],
+  "edges": [
+    {
+      "key": "Joao-trabalha_em-OpenCode",
+      "source": "Joao",
+      "target": "OpenCode",
+      "attributes": {
+        "relation": "trabalha_em"
+      }
+    },
+    {
+      "key": "Maria-lidera-Projeto X",
+      "source": "Maria",
+      "target": "Projeto X",
+      "attributes": {
+        "relation": "lidera"
+      }
+    },
+    {
+      "key": "Pedro-estuda-Go",
+      "source": "Pedro",
+      "target": "Go",
+      "attributes": {
+        "relation": "estuda"
+      }
+    },
+    {
+      "key": "OpenCode-usa-Rust",
+      "source": "OpenCode",
+      "target": "Rust",
+      "attributes": {
+        "relation": "usa"
+      }
+    }
+  ]
+}

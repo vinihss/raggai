@@ -1,0 +1,8 @@
+-- Forward-only migration (regra S7/O7). Nunca edite uma migration aplicada.
+CREATE TABLE IF NOT EXISTS pings (
+    id         text        PRIMARY KEY,
+    message    text        NOT NULL CHECK (length(message) BETWEEN 1 AND 280),
+    created_at timestamptz NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS pings_created_at_idx ON pings (created_at DESC);

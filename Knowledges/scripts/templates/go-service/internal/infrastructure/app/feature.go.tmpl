@@ -1,0 +1,23 @@
+package app
+
+import (
+	"log/slog"
+	"net/http"
+
+	"__MODULE__/internal/infrastructure/clock"
+	"__MODULE__/internal/infrastructure/id"
+)
+
+// Dependencies is the shared service context handed to every feature.
+//
+// Regra do guia (F4): features recebem apenas o que precisam por parâmetro.
+// Este struct cresce por modo (full adiciona DB) e por porta compartilhada,
+// nunca por variável global.
+type Dependencies struct {
+	Log   *slog.Logger
+	Clock clock.System
+	IDs   id.Random
+}
+
+// Feature registers one feature on the versioned API mux.
+type Feature func(api *http.ServeMux, deps Dependencies) error

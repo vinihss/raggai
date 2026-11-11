@@ -1,0 +1,20 @@
+ARG GO_VERSION=__GO_VERSION__
+
+FROM golang:${GO_VERSION}-alpine AS build
+
+WORKDIR /src
+
+COPY go.mod ./
+COPY . .
+
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" \
+    -o /out/__SERVICE__ ./cmd/__SERVICE__
+
+FROM gcr.io/distroless/static-debian12:nonroot
+
+COPY --from=build /out/__SERVICE__ /__SERVICE__
+
+EXPOSE 8080
+USER nonroot:nonroot
+
+ENTRYPOINT ["/__SERVICE__"]

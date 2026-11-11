@@ -1,0 +1,17 @@
+package app
+
+import (
+	"net/http"
+
+	httpadapter "__MODULE__/internal/adapters/inbound/http"
+	"__MODULE__/internal/adapters/outbound/memory"
+	appping "__MODULE__/internal/application/ping"
+)
+
+// registerPing wires the example feature on top of the in-memory adapter.
+func registerPing(api *http.ServeMux, deps Dependencies) error {
+	repo := memory.NewPingRepository()
+	service := appping.NewService(repo, deps.Clock, deps.IDs)
+	httpadapter.RegisterPing(api, service)
+	return nil
+}

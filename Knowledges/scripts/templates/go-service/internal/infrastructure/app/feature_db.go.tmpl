@@ -1,0 +1,25 @@
+package app
+
+import (
+	"log/slog"
+	"net/http"
+
+	"github.com/jackc/pgx/v5/pgxpool"
+
+	"__MODULE__/internal/infrastructure/clock"
+	"__MODULE__/internal/infrastructure/id"
+)
+
+// Dependencies is the shared service context handed to every feature.
+//
+// Regra do guia (F4): features recebem apenas o que precisam por parâmetro.
+// O pool é criado uma vez no composition root e fechado no shutdown.
+type Dependencies struct {
+	Log   *slog.Logger
+	Clock clock.System
+	IDs   id.Random
+	DB    *pgxpool.Pool
+}
+
+// Feature registers one feature on the versioned API mux.
+type Feature func(api *http.ServeMux, deps Dependencies) error

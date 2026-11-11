@@ -8,7 +8,7 @@ const SKILL_DST = path.join(SKILL_DST_DIR, 'rag-memory.md');
 const PLUGIN_REF = '/home/vinicius/.opencode/plugin/raggai.json';
 
 async function main() {
-  console.log("⚙️ Instalação automática OpenCode (raggai) — sem cópia de prompt\n");
+  console.log("⚙️ Automatic OpenCode install (raggai) — no prompt copy\n");
 
   // 1. Confirma build
   if (!fs.existsSync(DIST)) {
@@ -35,11 +35,11 @@ async function main() {
     module_path: DIST,
     skill: SKILL_DST,
     installed_at: new Date().toISOString(),
-    note: "Referência de instalação automática. Nenhum system.prompt copiado."
+    note: "Reference for automatic install. No system.prompt copied."
   }, null, 2));
-  console.log("✅ Referência do plugin criada:", PLUGIN_REF);
+  console.log("✅ Plugin reference created:", PLUGIN_REF);
 
-  console.log("\n🎉 Instalação concluída. Nenhum conteúdo de prompt copiado.");
+  console.log("\n🎉 Installation complete. No prompt content copied.");
   console.log("   Plugin:", DIST);
   console.log("   Skill:", SKILL_DST);
   console.log("   Uso: invocar /rag-memory no agente; as ferramentas estão no plugin.");

@@ -1,0 +1,7 @@
+// Package integration groups tests that need real infrastructure.
+//
+// Rode com: go test -tags=integration ./tests/...
+//
+// Regra do guia (T4): integração usa Postgres real e `-race`; nada de banco
+// fake para validar concorrência, lease ou transação.
+package integration

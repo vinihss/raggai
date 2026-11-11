@@ -1,0 +1,53 @@
+package ping_test
+
+import (
+	"errors"
+	"strings"
+	"testing"
+	"time"
+
+	"__MODULE__/internal/domain/ping"
+)
+
+// Regra do guia (T1): teste de domínio é table-driven e não toca banco, rede
+// ou relógio real.
+func TestNew(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 10, 30, 12, 0, 0, 0, time.UTC)
+
+	tests := []struct {
+		name    string
+		id      string
+		message string
+		wantErr error
+		want    string
+	}{
+		{name: "accepts a valid message", id: "id-1", message: "hello", want: "hello"},
+		{name: "trims the message", id: "id-1", message: "  hello  ", want: "hello"},
+		{name: "rejects empty id", id: "", message: "hello", wantErr: ping.ErrEmptyID},
+		{name: "rejects blank message", id: "id-1", message: "   ", wantErr: ping.ErrEmptyMessage},
+		{name: "rejects long message", id: "id-1", message: strings.Repeat("a", 281), wantErr: ping.ErrMessageTooLong},
+		{name: "accepts limit message", id: "id-1", message: strings.Repeat("a", 280), want: strings.Repeat("a", 280)},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := ping.New(tt.id, tt.message, now)
+			if !errors.Is(err, tt.wantErr) {
+				t.Fatalf("New() error = %v, want %v", err, tt.wantErr)
+			}
+			if tt.wantErr != nil {
+				return
+			}
+			if got.Message() != tt.want {
+				t.Errorf("Message() = %q, want %q", got.Message(), tt.want)
+			}
+			if !got.CreatedAt().Equal(now) {
+				t.Errorf("CreatedAt() = %v, want %v", got.CreatedAt(), now)
+			}
+		})
+	}
+}

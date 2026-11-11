@@ -1,0 +1,77 @@
+# Operação
+
+> Este documento é **curado**: o scaffold o cria uma única vez e nunca o
+> sobrescreve.
+
+## Build
+
+```bash
+make build            # binário em bin/__SERVICE__
+make test             # suite unitária
+make test-race        # detector de corrida
+make lint             # go vet + gofmt
+make arch-check       # regras de dependência
+```
+
+O `Dockerfile` gera uma imagem multi-stage: compila com a toolchain e copia
+apenas o binário para a imagem final.
+
+## Configuração
+
+Todas as variáveis estão em [Configuração](configuracao.md). Resumo:
+
+| Variável | Obrigatória | Default |
+| --- | --- | --- |
+| `HTTP_ADDR` | não | `:8080` |
+| `LOG_LEVEL` | não | `info` |
+| `DATABASE_URL` | apenas modo `full` | — |
+
+O processo **recusa subir** com configuração inválida. Falhar no boot é
+melhor do que falhar na primeira requisição.
+
+## Health checks
+
+| Rota | Significado | Use para |
+| --- | --- | --- |
+| `GET /healthz` | processo vivo, sem checar dependências | liveness probe |
+| `GET /readyz` | dependências prontas (ex.: pool do banco) | readiness probe |
+
+Não aponte liveness para `/readyz`: um banco momentaneamente indisponível
+não deve reiniciar o processo.
+
+## Shutdown
+
+`cmd/__SERVICE__/main.go` escuta `SIGINT`/`SIGTERM` e faz shutdown
+gracioso: para de aceitar conexões, espera as requisições em andamento e
+fecha o pool. O timeout é configurado no próprio `main`.
+
+Se você adicionar um worker ou consumer, ele precisa entrar no mesmo
+`context` de shutdown. Caso contrário, o processo encerra no meio do
+trabalho.
+
+## Logs
+
+Logs são estruturados (`slog`) e incluem o request id propagado pelo
+middleware. Regras práticas:
+
+- Não logue payload inteiro nem campo `sensitive`.
+- Logue o erro na borda (handler ou middleware), não em cada camada.
+- Use `LOG_LEVEL=debug` só em investigação; o default é `info`.
+
+## Migrations
+
+Migrations são forward-only e numeradas. Antes de subir uma versão nova:
+
+```bash
+# aplique as migrations pendentes com a ferramenta que você usa
+# (o scaffold só gera os arquivos; não embute um migrator)
+```
+
+Nunca edite uma migration já aplicada: crie a próxima.
+
+## Checklist de deploy
+
+1. `make test && make lint && make arch-check` verdes.
+2. Migrations aplicadas (ou prontas para aplicar) antes do rollout.
+3. `/readyz` respondendo 200 na instância nova.
+4. Rollback definido: binário anterior + migration compatível.

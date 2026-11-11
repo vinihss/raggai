@@ -1,0 +1,79 @@
+# Arquitetura
+
+> Este documento é **curado**: o scaffold o cria uma única vez e nunca o
+> sobrescreve. As regras gerais estão no guia
+> `Knowledges/guia-go-clean-hexagonal.md`; aqui fica o que é específico de
+> `__SERVICE__`.
+
+## Camadas
+
+```text
+adapters/inbound ──► application ──► domain
+adapters/outbound ─► ports ───────► domain
+infrastructure ────► tudo (composition root)
+```
+
+| Camada | Papel | Pode importar |
+| --- | --- | --- |
+| `domain` | Agregados, value objects, invariantes | stdlib |
+| `ports` | Interfaces de saída (`Clock`, `ID`, repositórios, `UnitOfWork`) | stdlib + `domain` |
+| `application` | Casos de uso; orquestra `domain` + `ports` | `domain`, `ports`, stdlib |
+| `adapters/inbound/http` | Handlers, DTOs, mapeamento de erro, middleware | `application`, stdlib |
+| `adapters/outbound/*` | Implementações de `ports` (memory, postgres) | `ports`, `domain`, driver |
+| `infrastructure` | Config, logging, clock, id e composition root | todas |
+| `cmd` | `main`: config → app → sinais | todas |
+
+## Regras verificadas mecanicamente
+
+`make arch-check` falha se:
+
+- `domain` importar qualquer outro pacote interno;
+- `application` importar `adapters` ou `infrastructure`;
+- `ports` importarem `application`, `adapters` ou `infrastructure`.
+
+O composition root é a única camada que conhece implementações concretas. É
+por isso que `internal/infrastructure/app` monta repositórios e serviços, e
+nenhum caso de uso escolhe o adapter.
+
+## Fluxo de uma requisição
+
+```text
+HTTP request
+  └─ middleware (request id, recover, access log)
+      └─ handler (inbound)
+          ├─ decode + validação de forma do DTO
+          ├─ application.Reducer (caso de uso)
+          │    ├─ domain.New / método do agregado (invariantes)
+          │    └─ port (repository) → adapter → Postgres ou memória
+          └─ encode da resposta ou mapeamento de erro
+```
+
+O handler não tem regra de negócio. O caso de uso não conhece
+`http.Request`, SQL nem `pgx`. O adapter não valida invariantes: apenas
+persiste o que o domínio já aceitou.
+
+## Composição
+
+O wiring é explícito, em dois níveis:
+
+- `internal/infrastructure/app/app.go` monta o que é do processo (config,
+  logger, pool, clock, id) e chama `registerFeatures`.
+- `internal/infrastructure/app/features_gen.go` é **gerado** e chama um
+  `register<Feature>` por feature.
+- `internal/infrastructure/app/<feature>_gen.go` é **gerado** e escolhe o
+  adapter da feature.
+
+Para adicionar uma feature, não edite `features_gen.go`: rode
+`new-feature.sh`. Para trocar o adapter de uma feature, edite apenas o
+`<feature>_gen.go` correspondente (ou mude o descritor e regere).
+
+## O que este serviço deliberadamente não usa
+
+- ORM: as queries ficam no adapter Postgres, explícitas.
+- Service locator / container mágico: dependências são parâmetros.
+- `init()`: nada de efeito colateral em import.
+- `time.Now()`/`uuid` em `domain` ou `application`: use as portas `Clock` e
+  `ID`.
+
+Ao se afastar de uma dessas escolhas, registre o motivo em
+[Decisões](decisoes.md).

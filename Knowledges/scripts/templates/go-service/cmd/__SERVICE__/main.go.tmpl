@@ -1,0 +1,45 @@
+// Command __SERVICE__ is the process entrypoint.
+//
+// Regra do guia (F1): main.go só carrega configuração, monta a aplicação,
+// trata sinais e delega o ciclo de vida. Nenhuma regra de negócio aqui.
+package main
+
+import (
+	"context"
+	"log/slog"
+	"os"
+	"os/signal"
+	"syscall"
+
+	"__MODULE__/internal/infrastructure/app"
+	"__MODULE__/internal/infrastructure/config"
+	"__MODULE__/internal/infrastructure/logging"
+)
+
+func main() {
+	if err := run(); err != nil {
+		slog.Error("startup failed", "error", err)
+		os.Exit(1)
+	}
+}
+
+func run() error {
+	cfg, err := config.Load()
+	if err != nil {
+		return err
+	}
+
+	logger := logging.New(cfg.LogLevel)
+	slog.SetDefault(logger)
+
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	application, err := app.New(ctx, cfg, logger)
+	if err != nil {
+		return err
+	}
+	defer application.Close()
+
+	return application.Run(ctx)
+}

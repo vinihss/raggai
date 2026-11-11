@@ -1,29 +1,42 @@
-# Agentes — RAG Híbrido Local (raggai)
+# raggai — Hybrid Local RAG for Agents (OpenCode)
 
-Configuração para integrar no OpenCode.
+Repo: Bun + TypeScript. Plugin entry `dist/index.js` (built from `src/index.ts`).
 
-## Prompt de Sistema (copiar para agent)
-```
-Você é um agente com memória híbrida local (Vetor + Grafo).
-Sempre invocar consultar_memoria_pessoal antes de responder com contexto pessoal.
-Se encontrar factos novos, usar memorizar_facto_pessoal.
-Nunca invente dados além dos retornos das ferramentas.
-Se a pergunta for sobre código: usar buscar_semantica_codebase.
-```
+## Setup & rebuild
+- `bun install.ts` — Creates `data/`, runs `bun install`, builds `dist/` + `.node`
+- `bun build ./src/index.ts --outdir ./dist --target node` — Required after any `src/` change
+- **Never edit `dist/index.js` directly**; always rebuild from `src/`
 
-## Registro do plugin (opencode.json / agent config)
-```json
-{
-  "plugins": ["/home/vinicius/raggai/dist/index.js"]
-}
-```
+## OpenCode plugin registration
+- `bun install-opencode.ts` — Registers plugin + skill (no `system.prompt` copy)
+  - Copies `rag-memory.md` → `~/.opencode/skills/rag-memory.md`
+  - Creates `~/.opencode/plugin/raggai.json` pointing to `dist/index.js`
 
-## Ferramentas disponíveis no agente
-- consultar_memoria_pessoal (busca combinada)
-- memorizar_facto_pessoal (grava fato)
-- importar_notas_markdown (leitura .md)
-- buscar_semantica_codebase (busca em código indexado)
-- indexar_codebase_local (indexar código)
-- auditar_e_visualizar_grafo (auditoria + árvore)
-- exportar_mapa_visual_grafo (mapa HTML interativo)
-- resetar_memoria_local (limpa índices — requer confirmar: true)
+## Validation & maintenance
+- `bun test_rag.ts` — Validates embeddings + LanceDB (proven: ~19% confidence search)
+- `bun reset_indexes.ts` — Clears `data/vector_store/`, `data/test_store/`, `data/graph_store.json`
+
+## Data directories
+- `data/vector_store/` — LanceDB embeddings persistence
+- `data/graph_store.json` — Graph of logical connections (JSON, Graphology adapter)
+- `auditoria_grafo.md` — Generated audit report
+
+## Architecture: Hexagonal (Ports/Adapters) in `src/`
+- `domain/` — core services (HybridOrchestrator, text-splitter)
+- `ports/` — inbound/outbound contracts (RagOperationsPort, VectorStorePort, GraphStorePort, EmbeddingPort)
+- `adapters/` — tech-specific implementations (LanceDB, Xenova/Transformers, Graphology/JSON, plugin-handlers, Express)
+- `config/container.ts` — Manual DI (Vanilla, no container); **never couple to LanceDB/Graphology directly**; go through ports
+
+## Plugin tools (exported from `dist/index.js`)
+- `consult_memory_personal` — Hybrid search: vector (LanceDB) + graph (keywords)
+- `memorize_personal_fact` — Stores structured fact + text in vector
+- `import_markdown_notes` — .md ingestion with 25-word overlap + auto graph extraction
+- `index_local_codebase` — Indexes source code (TS, JS, PY, GO, RS, JSON/YAML/CSS)
+- `search_semantic_codebase` — Pre-LLM filter: semantic code search via cosine
+- `audit_and_visualize_graph` — Cleans orphan nodes + structured tree report
+- `export_visual_graph_map` — Exports interactive 2D HTML map (groups by color)
+- `reset_local_memory` — Deletes all indexes (Vector + Graph); requires `confirm: true`
+
+## Execution flow
+- Agent invokes `/rag-memory` → plugin calls tool exports → container uses DI to wire adapters → orchestrator merges vector + graph results
+- REST API via `bun run src/server.ts` → `localhost:3000` (`/query`, `/save`)

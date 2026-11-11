@@ -1,0 +1,10 @@
+package dto
+
+// ErrorResponse is the stable error envelope.
+//
+// Regra do guia (I4): todo erro de borda usa o mesmo formato, independente da
+// feature. Fica em arquivo próprio para existir até no modo minimal.
+type ErrorResponse struct {
+	Code    string `json:"code"`
+	Message string `json:"message"`
+}

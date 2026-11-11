@@ -14,7 +14,12 @@
   "trustedDependencies": [
     "protobufjs"
   ],
+  "scripts": {
+    "lint": "biome check ./src --config-path=./biome.json || true",
+    "format": "biome format --write ./src"
+  },
   "devDependencies": {
+    "@biomejs/biome": "^2.6.3",
     "@types/glob": "^8.1.0",
     "glob": "^14.0.3"
   }

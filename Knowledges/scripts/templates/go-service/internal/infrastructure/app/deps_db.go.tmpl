@@ -1,0 +1,41 @@
+package app
+
+import (
+	"context"
+	"fmt"
+	"log/slog"
+	"time"
+
+	"github.com/jackc/pgx/v5/pgxpool"
+
+	"__MODULE__/internal/infrastructure/clock"
+	"__MODULE__/internal/infrastructure/config"
+	"__MODULE__/internal/infrastructure/id"
+)
+
+// buildDependencies wires the process-wide ports, including the pgx pool.
+func buildDependencies(ctx context.Context, cfg config.Config, log *slog.Logger) (Dependencies, func(), error) {
+	pool, err := pgxpool.New(ctx, cfg.DatabaseURL)
+	if err != nil {
+		return Dependencies{}, nil, fmt.Errorf("connect database: %w", err)
+	}
+
+	deps := Dependencies{
+		Log:   log,
+		Clock: clock.System{},
+		IDs:   id.Random{},
+		DB:    pool,
+	}
+	return deps, pool.Close, nil
+}
+
+// Ready reports whether the process can serve traffic.
+//
+// Regra do guia (I5): readiness checa dependências reais, não só o processo.
+func (d Dependencies) Ready() func(context.Context) error {
+	return func(ctx context.Context) error {
+		ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+		defer cancel()
+		return d.DB.Ping(ctx)
+	}
+}

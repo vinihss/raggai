@@ -1,0 +1,54 @@
+# Testes
+
+> Este documento é **curado**: o scaffold o cria uma única vez e nunca o
+> sobrescreve.
+
+## Princípio
+
+Cada camada tem um tipo de teste que só ela justifica. Testar a mesma regra
+em três níveis gera manutenção sem aumentar confiança.
+
+| Camada | O que testar | Ferramenta | I/O |
+| --- | --- | --- | --- |
+| `domain` | Invariantes, normalização, limites, erros de validação | `testing`, table-driven | nenhum |
+| `application` | Orquestração, ordem de chamadas, propagação de erro | fakes das portas | nenhum |
+| `adapters/inbound/http` | Status, corpo, mapeamento de erro, decode | `httptest` + fake do caso de uso | nenhum |
+| `adapters/outbound/postgres` | SQL, mapeamento de linha, constraints | Postgres real (`-tags=integration`) | banco |
+| `adapters/outbound/memory` | Semântica de contrato da porta | `testing` | nenhum |
+| `main`/wiring | Smoke: processo sobe e responde `/healthz` | script ou e2e | processo |
+
+## Comandos
+
+```bash
+make test                                   # unitários
+make test-race                              # unitários com -race
+DATABASE_URL=postgres://... \
+  go test -tags=integration ./tests/...     # integração
+```
+
+O teste de integração é **skip** sem `DATABASE_URL`; isso mantém
+`go test ./...` utilizável em máquina sem banco.
+
+## Regras
+
+- Sem `time.Sleep` para sincronizar: use canal, `sync.WaitGroup` ou
+  contexto.
+- Sem relógio real no domínio: injete `Clock` e verifique o valor exato.
+- Sem ID aleatório em asserção: injete `ID` e compare com o valor fixo.
+- Teste de tabela nomeia o caso (`t.Run`) para o relatório dizer o que
+  quebrou.
+- Um teste não deve depender da ordem de outro; use `t.Parallel()` quando
+  não houver estado compartilhado.
+- Não mocke o banco: ou é Postgres real, ou é o adapter em memória.
+
+## O que não vale a pena testar
+
+- Getters triviais do agregado.
+- Que a stdlib funciona (`json.Marshal` de struct simples).
+- Cobertura por cobertura: prefira um teste por invariante e por caminho de
+  erro a 100% de linhas.
+
+## Cobertura
+
+Cobertura é sinal, não meta. O número que importa é: **toda invariante tem
+teste de rejeição** e **todo caso de uso tem teste de erro de porta**.

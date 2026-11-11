@@ -1,0 +1,69 @@
+# Decisões
+
+> Este documento é **curado**: o scaffold o cria uma única vez e nunca o
+> sobrescreve. Registre aqui decisões que mudam o desenho do serviço, com
+> contexto e consequência. Formato curto de ADR.
+
+## Modelo
+
+```text
+### D<n>: <título>
+
+- Data: AAAA-MM-DD
+- Status: proposta | aceita | substituída por D<m>
+- Contexto: o que forçou a decisão
+- Decisão: o que foi escolhido
+- Consequência: o que fica mais fácil e o que fica mais difícil
+```
+
+## Decisões herdadas do scaffold
+
+### D1: Clean Architecture + Hexagonal
+
+- Status: aceita
+- Contexto: o serviço precisa de regra de negócio testável sem banco e sem
+  HTTP, e de trocar adapter sem reescrever caso de uso.
+- Decisão: `domain` isolado, `ports` como contrato, `application`
+  orquestrando, adapters nas bordas e composition root explícito.
+- Consequência: mais arquivos por feature e wiring manual; em troca, testes
+  rápidos e substituição de infraestrutura localizada.
+
+### D2: Sem ORM
+
+- Status: aceita
+- Contexto: queries explícitas são mais previsíveis e o domínio não deve
+  vazar detalhes de persistência.
+- Decisão: `pgx` direto no adapter Postgres; SQL no adapter, nunca em
+  `application`.
+- Consequência: mais SQL escrito à mão; menos magia e menos acoplamento.
+
+### D3: Tempo e ID por porta
+
+- Status: aceita
+- Contexto: `time.Now()` e UUID aleatório tornam testes não determinísticos.
+- Decisão: `ports/clock.Clock` e `ports/id.Generator`, injetados pelo
+  composition root.
+- Consequência: um parâmetro a mais no construtor do serviço de aplicação;
+  testes com valores fixos.
+
+### D4: Wiring gerado, não editado
+
+- Status: aceita
+- Contexto: registrar features à mão em um arquivo único gera conflito e
+  esquecimento.
+- Decisão: `features_gen.go` e `<feature>_gen.go` são gerados por
+  `new-feature.sh`; o manifesto da feature é o `.scaffold/features/*.json`.
+- Consequência: para mudar o wiring, mude o descritor e regere; edição
+  manual é sobrescrita.
+
+### D5: Migrations forward-only
+
+- Status: aceita
+- Contexto: reescrever migration aplicada quebra ambientes já migrados.
+- Decisão: uma migration por mudança, numerada; nunca editar uma aplicada.
+- Consequência: evolução por adição; limpeza exige migration nova.
+
+## Decisões deste serviço
+
+Adicione abaixo as decisões específicas de `__SERVICE__` (por exemplo:
+estratégia de autenticação, particionamento, cache, contrato de eventos).

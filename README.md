@@ -2,11 +2,11 @@
 
 Repositório com especificação técnica e implementação em **TypeScript/Bun** de uma memória de longo prazo híbrida e modular para agentes (OpenCode, LangChain, CrewAI, AutoGen, APIs). Opera 100% localmente, eliminando custos de APIs externas e filtrando contexto de forma cirúrgica.
 
-Estado atual (2026-10-27): completo. `dist/index.js` + `.node` construídos. Skill (`rag-memory.md`) no formato SKILL.md criada. `test_rag.ts` validado (19,08% confiança, `errorHandler.ts`). Nenhum `system.prompt` copiado — funciona por skill (`/rag-memory`) + plugin.
+Current state (2026-10-27): complete. `dist/index.js` + `.node` construídos. Skill (`rag-memory.md`) no formato SKILL.md criada. `test_rag.ts` validado (19,08% confiança, `errorHandler.ts`). No `system.prompt` copied — works via skill (`/rag-memory`) + plugin.
 
 ---
 
-## 🏗️ Arquitetura do Sistema
+## 🏗️ System Architecture
 
 Duas camadas independentes que se complementam em tempo de execução:
 
@@ -28,7 +28,7 @@ Duas camadas independentes que se complementam em tempo de execução:
 
 ---
 
-## 📂 Estrutura de Diretórios
+## 📂 Directory Structure
 
 ```text
 ~/raggai/
@@ -54,92 +54,92 @@ Duas camadas independentes que se complementam em tempo de execução:
 
 ---
 
-## 🚀 Instalação Rápida (Local)
+## 🚀 Quick Setup (Local)
 
-Requer **Bun** (1.4.4+ confirmado). Na raiz do repositório:
+Requires **Bun** (1.4.4+ confirmed). At repo root:
 
 ```bash
 bun install.ts
 ```
 
-O script faz:
-1. Cria `./data/`
+The script does:
+1. Creates `./data/`
 2. `bun install`
 3. `bun build ./src/index.ts --outdir ./dist --target node`
-4. Confirma `dist/index.js` + `.node`
+4. Confirms `dist/index.js` + `.node`
 
-Depois valide:
+Then validate:
 ```bash
 bun test_rag.ts
 ```
 
-Resultado esperado (comprovado): busca "Onde fica a lógica que gera os erros do servidor?" retorna `src/middleware/errorHandler.ts` com ~19% confiança.
+Expected result (proven): search "Where is the logic that generates server errors?" returns `src/middleware/errorHandler.ts` with ~19% confidence.
 
 ---
 
-## 🔌 Instalação Automática para OpenCode (Skill + Plugin, sem copiar prompt)
+## 🔌 Automatic OpenCode Installation (Skill + Plugin, no prompt copy)
 
-O sistema funciona por **skill** (`rag-memory.md`) e **plugin** (`dist/index.js`), não por `system.prompt`. Nenhum conteúdo de instrução é copiado.
+The system works via **skill** (`rag-memory.md`) and **plugin** (`dist/index.js`), not `system.prompt`. No instruction content is copied.
 
 ```bash
 bun install-opencode.ts
 ```
 
-O que faz (apenas referência, não edita `opencode.json`):
-- Confirma `dist/index.js`
-- Copia `rag-memory.md` → `~/.opencode/skills/rag-memory.md`
-- Cria `~/.opencode/plugin/raggai.json` apontando para o módulo
-- **Não** copia `system-prompt-rag.md`
+What it does (reference only, does not edit `opencode.json`):
+- Confirms `dist/index.js`
+- Copies `rag-memory.md` → `~/.opencode/skills/rag-memory.md`
+- Creates `~/.opencode/plugin/raggai.json` pointing to the module
+- **Does not** copy `system-prompt-rag.md`
 
-Uso no agente: invocar `/rag-memory` (ou deixar o contexto pessoal acionar a skill). As ferramentas executam no background via plugin.
+Agent usage: invoke `/rag-memory` (or let personal context trigger the skill). Tools run in the background via plugin.
 
 ---
 
-## 🧪 Validar com Script de Teste
+## 🧪 Validate with Test Script
 
-Antes de integrar, valide localmente:
+Before integrating, validate locally:
 
 ```bash
 bun test_rag.ts
 ```
 
-Valida:
+Validates:
 - Modelo `Transformers.js` local (`all-MiniLM-L6-v2`)
 - Métrica de cosseno (distância vetorial)
 - Persistência física (`data/test_store/` + LanceDB)
 
 ---
 
-## 🛠️ Catálogo de Ferramentas Nativas
+## 🛠️ Native Tools Catalog
 
-Quando o plugin `dist/index.js` é registrado, o agente ganha estas ferramentas (exportadas de `src/index.ts`):
+When plugin `dist/index.js` is registered, the agent gains these tools (exported from `src/index.ts`):
 
-| Ferramenta | Função |
+| Tool | Function |
 |---|---|
-| `consultar_memoria_pessoal` | Busca híbrida: vetor (LanceDB) + grafo (keywords) |
-| `memorizar_facto_pessoal` | Grava fato estruturado + texto no vetor |
-| `importar_notas_markdown` | Ingestão `.md` com overlap (25 palavras) + grafos automáticos |
-| `importar_codebase_local` | Indexa código (TS, JS, PY, GO, RS, JSON/YAML/CSS) |
-| `buscar_semantica_codebase` | Busca semântica em código indexado (filtro pré-LLM) |
-| `indexar_codebase_local` | Indexa repositório completo |
-| `auditar_e_visualizar_grafo` | Limpa nós órfãos + relatório em árvore |
-| `exportar_mapa_visual_grafo` | Exporta HTML interativo (física 2D, grupos por cor) |
-| `resetar_memoria_local` | Apaga índices (`Vetor` + `Grafo`) — requer `confirmar: true` |
+| `consult_memory_personal` | Hybrid search: vector (LanceDB) + graph (keywords) |
+| `memorize_personal_fact` | Stores structured fact + text in vector |
+| `import_markdown_notes` | `.md` ingestion with overlap (25 words) + auto graphs |
+| `index_local_codebase` | Indexes source code (TS, JS, PY, GO, RS, JSON/YAML/CSS) |
+| `search_semantic_codebase` | Semantic search in indexed code (pre-LLM filter) |
+| `index_local_codebase` | Indexes full repository |
+| `audit_and_visualize_graph` | Cleans orphan nodes + structured tree report |
+| `export_visual_graph_map` | Exports interactive 2D HTML map (groups by color) |
+| `reset_local_memory` | Deletes indexes (`Vector` + `Graph`) — requires `confirm: true` |
 
-Chunking poliglota (`chunkCodebase()` + `LANGUAGE_RULES`): reconhece `ts/js`, `py`, `go`, `rs`, `json/yaml/css/md`; isola blocos por assinatura (`def`, `func`, `class`, etc.).
+Polyglot chunking (`chunkCodebase()` + `LANGUAGE_RULES`): recognizes `ts/js`, `py`, `go`, `rs`, `json/yaml/css/md`; isolates blocks by signature (`def`, `func`, `class`, etc.).
 
 ---
 
-## 🌐 Como Utilizar Fora do OpenCode (Frameworks / APIs)
+## 🌐 How to Use Outside OpenCode (Frameworks / APIs)
 
 Exponha via API REST local:
 
 ```bash
 bun run src/server.ts
-# Porta 3000; endpoints /query (POST) e /save (POST)
+# Port 3000; endpoints /query (POST) and /save (POST)
 ```
 
-Exemplo Python (puro):
+Python example (pure):
 ```python
 import requests
 res = requests.post("http://localhost:3000/query",
@@ -161,18 +161,18 @@ def memento_hibrido_local(query: str, palavras_chave: list) -> dict:
 
 ---
 
-## 🧹 Manutenção e Reset dos Índices
+## 🧹 Maintenance and Index Reset
 
-Se mudar de repositório de testes ou quiser começar do zero:
+If switching test repos or wanting to start fresh:
 
 ```bash
 bun reset_indexes.ts
 ```
 
-Limpa: `data/vector_store/` + `data/test_store/` + `data/graph_store.json`. Recria `data/` se necessário.
+Clears: `data/vector_store/` + `data/test_store/` + `data/graph_store.json`. Recreates `data/` if needed.
 
 ---
 
-## ⚖️ Licença
+## ⚖️ License
 
-Projeto de código aberto desenvolvido estritamente para fins de privacidade de dados, otimização de infraestrutura local e engenharia avançada de agentes de inteligência artificial.
+Open-source project developed strictly for data privacy, local infrastructure optimization, and advanced AI agent engineering.

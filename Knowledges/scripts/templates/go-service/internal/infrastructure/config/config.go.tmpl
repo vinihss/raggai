@@ -1,0 +1,52 @@
+// Package config loads and validates process configuration.
+//
+// Regra do guia (F2): configuração é lida uma vez, validada no boot e passada
+// como struct explícita. Nada de os.Getenv espalhado pelo código.
+package config
+
+import (
+	"fmt"
+	"os"
+	"strings"
+)
+
+// Config holds every runtime knob of the service.
+type Config struct {
+	HTTPAddr string
+	LogLevel string
+}
+
+// Load reads the environment and validates the result.
+func Load() (Config, error) {
+	cfg := Config{
+		HTTPAddr: envOrDefault("HTTP_ADDR", ":8080"),
+		LogLevel: strings.ToLower(envOrDefault("LOG_LEVEL", "info")),
+	}
+
+	if err := cfg.Validate(); err != nil {
+		return Config{}, err
+	}
+	return cfg, nil
+}
+
+// Validate rejects configurations that cannot boot.
+func (c Config) Validate() error {
+	if c.HTTPAddr == "" {
+		return fmt.Errorf("config: HTTP_ADDR is required")
+	}
+
+	switch c.LogLevel {
+	case "debug", "info", "warn", "error":
+	default:
+		return fmt.Errorf("config: invalid LOG_LEVEL %q", c.LogLevel)
+	}
+
+	return nil
+}
+
+func envOrDefault(key, fallback string) string {
+	if value, ok := os.LookupEnv(key); ok && value != "" {
+		return value
+	}
+	return fallback
+}
