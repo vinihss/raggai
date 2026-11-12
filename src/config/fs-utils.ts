@@ -73,8 +73,11 @@ export function walkFiles(root: string, opts?: WalkOptions): string[] {
   return out;
 }
 
+// Markdown files are ingested exclusively by the notes pipeline (kind:"note").
+// Including them here made `--mode code` delete note chunks by path and index
+// .md sources with the wrong type/kind (code rules run on markdown text).
 export function walkCodeFiles(root: string, opts?: Omit<WalkOptions, "exts">): string[] {
-  return walkFiles(root, { ...opts, exts: new Set(["ts","tsx","js","jsx","py","go","rs","json","yaml","yml","css","md","toml","sql","sh","java","rb","php","c","cpp","h","cs"]) });
+  return walkFiles(root, { ...opts, exts: new Set(["ts","tsx","js","jsx","py","go","rs","json","yaml","yml","css","toml","sql","sh","java","rb","php","c","cpp","h","cs"]) });
 }
 
 export function walkMarkdownFiles(root: string, opts?: Omit<WalkOptions, "exts">): string[] {

@@ -69572,7 +69572,7 @@ function walkFiles(root, opts) {
   return out;
 }
 function walkCodeFiles(root, opts) {
-  return walkFiles(root, { ...opts, exts: new Set(["ts", "tsx", "js", "jsx", "py", "go", "rs", "json", "yaml", "yml", "css", "md", "toml", "sql", "sh", "java", "rb", "php", "c", "cpp", "h", "cs"]) });
+  return walkFiles(root, { ...opts, exts: new Set(["ts", "tsx", "js", "jsx", "py", "go", "rs", "json", "yaml", "yml", "css", "toml", "sql", "sh", "java", "rb", "php", "c", "cpp", "h", "cs"]) });
 }
 function walkMarkdownFiles(root, opts) {
   return walkFiles(root, { ...opts, exts: new Set(["md"]) });
