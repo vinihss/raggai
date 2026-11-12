@@ -65,7 +65,17 @@ Phases 1–3 (foundation, markdown rules, code rules) are implemented in `src/`:
 - Import flows (`raggai import` and plugin `import_markdown_notes`/`index_local_codebase`) are idempotent w.r.t. graph facts; deleted sources prune their facts and orphan nodes. `raggai import --force` re-extracts unchanged files (needed after extractor upgrades).
 - `bun test_graph_extraction.ts` — extraction regression checks (run after touching the extractor/vocab).
 
-Roadmap: Phase 4 = UI/CLI graph analytics · Phase 5 = opt-in model-assisted extraction (validated JSON, thresholds) · Phase 6 = optional AST adapters behind `GraphExtractionPort`.
+### Phase 4 — UI/CLI graph analytics (implemented)
+
+- **Service**: `src/domain/services/graph-analytics.ts`
+  - `GraphStats` / `GraphAnalysis` — raw snapshot-based analytics: nodes, edges, facts by method (with avg confidence), facts by predicate, orphan nodes, most-connected nodes (degree + in/out degree), confidence distribution histogram (>=0.9 / 0.7–0.9 / 0.5–0.7 / <0.5).
+  - `readGraph` helper + `searchGraphByMethod` / `filterGraph` (predicate / method / minConfidence filtered `FactEdge` view).
+- **Port**: `GraphStorePort.getRaw(): GraphRawSnapshot` — exposes the raw multi-graph export for analytics consumers.
+- **CLI**: `raggai graph <name> [--domain <name>]` — prints the full analysis as JSON (`analyzeGraph`); warns when orphan nodes are found.
+- **UI**: `GraphPage` exposes `/api/graph` (nodes/edges) and `/api/graph/audit` (audit report + tree) — unchanged; verified live: 203 nodes / 245 edges for the `raggai` domain.
+- **Web API**: `web-server.ts` — `/api/graph` maps raw snapshot to `{id, from, to, …attrs}` for vis.js and `/api/graph/audit` delegates to `auditAndExportTree()`.
+
+Roadmap: Phase 5 = opt-in model-assisted extraction (validated JSON, thresholds) · Phase 6 = optional AST adapters behind `GraphExtractionPort`.
 
 ## Pending items (documented)
 1. **Complete embedding cache/batching in indexing**: apply `generateMany`/batching and cache metrics consistently across all ingestion flows (CLI/plugin/API).
@@ -75,8 +85,7 @@ Roadmap: Phase 4 = UI/CLI graph analytics · Phase 5 = opt-in model-assisted ext
 5. **Multi-domain snapshots/versioning**: domain-scoped snapshot/restore with scope/confirmations and consistent CLI/UI/API integration.
 6. **Fully autonomous global distribution**: `raggai` on PATH in global installs and fully autonomous execution outside the repo (assets/native deps), with `opencode install|init` validated in a clean environment.
 7. **E2E and OpenCode integration**: full external tests (`init` → `import` → `search` → plugin/OpenCode/UI) covering global vs local, project context, overlay, and write isolation.
-8. **Graph extraction pipeline — remaining phases** (Phases 1–3 done, see section above):
-   - Phase 4: graph analytics in UI/CLI (facts by method/confidence, filters, actionable audit).
+8. **Graph extraction pipeline — remaining phases** (Phases 1–4 done, see section above):
    - Phase 5: opt-in model-assisted extraction (`rules` default; `hybrid`/`llm` behind config), schema-validated JSON output, thresholds, selective scope, budget/timeout limits.
    - Phase 6: optional AST/tree-sitter adapters behind `GraphExtractionPort` for prioritized languages; move `minConfidence` from env into TOML (`graph.extraction.*`);
      note: pure markdown yields mostly `references` facts (e.g. Knowledges doc graph); code extraction (Phase 3) populates the `raggai` domain with dependency/definition/implements edges (240 facts on `./src`).
