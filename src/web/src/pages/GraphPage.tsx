@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
+import { Notice, type NoticeKind } from '../components/Notice'
 
 declare global { interface Window { vis: any } }
 
@@ -8,34 +9,48 @@ export const GraphPage: React.FC<{ activeDomain: string }> = ({ activeDomain }) 
   const [graph, setGraph] = useState<any>({ nodes: [], edges: [] })
   const [audit, setAudit] = useState<any>(null)
   const [error, setError] = useState('')
+  const [notice, setNotice] = useState<{ kind: NoticeKind; text: string } | null>(null)
+  const [loading, setLoading] = useState<'refresh' | 'audit' | 'export' | null>(null)
 
   const load = async () => {
     setError('')
+    setLoading('refresh')
     try {
       const res = await fetch(`/api/graph?domain=${encodeURIComponent(activeDomain)}`)
       const j = await res.json()
       if (!res.ok) throw new Error(j.error || 'error')
       setGraph(j)
     } catch (e: any) { setError(e.message) }
+    finally { setLoading(null) }
   }
 
   const runAudit = async () => {
-    setError('')
+    setError(''); setNotice(null); setLoading('audit')
     try {
       const res = await fetch(`/api/graph/audit?domain=${encodeURIComponent(activeDomain)}`)
       const j = await res.json()
-      if (!res.ok) throw new Error(j.error || 'error')
+      if (!res.ok) throw new Error(j.error || 'Audit failed')
       setAudit(j); load()
+      setNotice({ kind: 'success', text: 'Audit complete. Report and tree updated below.' })
     } catch (e: any) { setError(e.message) }
+    finally { setLoading(null) }
   }
 
   const exportHtml = async () => {
-    const res = await fetch(`/api/graph/export?domain=${encodeURIComponent(activeDomain)}`, { method: 'POST' })
-    const j = await res.json()
-    if (j.success) alert('Map exported: ' + j.path)
+    setError(''); setNotice(null); setLoading('export')
+    try {
+      const res = await fetch(`/api/graph/export?domain=${encodeURIComponent(activeDomain)}`, { method: 'POST' })
+      const j = await res.json()
+      if (!res.ok || j.success === false) throw new Error(j.error || `Export failed (${res.status})`)
+      setNotice({ kind: 'success', text: `Map exported: ${j.path}` })
+    } catch (e: any) {
+      setNotice({ kind: 'error', text: `Export failed: ${e?.message || e}` })
+    } finally {
+      setLoading(null)
+    }
   }
 
-  useEffect(() => { setAudit(null); load() }, [activeDomain])
+  useEffect(() => { setAudit(null); setNotice(null); load() }, [activeDomain])
 
   useEffect(() => {
     if (!containerRef.current) return
@@ -60,12 +75,13 @@ export const GraphPage: React.FC<{ activeDomain: string }> = ({ activeDomain }) 
       <div className="flex items-center justify-between flex-wrap gap-2">
         <h2 className="text-xl font-bold">Knowledge Graph • {activeDomain}</h2>
         <div className="flex gap-2">
-          <button onClick={load} className="px-3 py-1 bg-gray-200 rounded text-sm">Refresh</button>
-          <button onClick={runAudit} className="px-3 py-1 bg-blue-600 text-white rounded text-sm">Audit</button>
-          <button onClick={exportHtml} className="px-3 py-1 bg-green-600 text-white rounded text-sm">Export HTML</button>
+          <button onClick={load} disabled={loading !== null} className="px-3 py-1 bg-gray-200 rounded text-sm disabled:opacity-50">{loading === 'refresh' ? 'Refreshing...' : 'Refresh'}</button>
+          <button onClick={runAudit} disabled={loading !== null} className="px-3 py-1 bg-blue-600 text-white rounded text-sm disabled:opacity-50">{loading === 'audit' ? 'Auditing...' : 'Audit'}</button>
+          <button onClick={exportHtml} disabled={loading !== null} className="px-3 py-1 bg-green-600 text-white rounded text-sm disabled:opacity-50">{loading === 'export' ? 'Exporting...' : 'Export HTML'}</button>
         </div>
       </div>
       {error && <p className="text-red-600 text-sm">{error}</p>}
+      {notice && <Notice kind={notice.kind} text={notice.text} onClose={() => setNotice(null)} />}
       <div className="bg-white p-2 rounded border">
         <div className="text-sm text-gray-600 mb-2">Nodes: {graph.nodes?.length || 0} • Edges: {graph.edges?.length || 0}</div>
         <div ref={containerRef} style={{ height: 420, border: '1px solid #e5e7eb', borderRadius: 8, background: '#fafafa' }} />

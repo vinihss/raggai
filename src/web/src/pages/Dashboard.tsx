@@ -8,6 +8,12 @@ export const Dashboard: React.FC<Props> = ({ activeDomain, status }) => {
   const totalVersions = status?.totalVersions ?? 0
   const domains = status?.domains || []
   const vectorCount = status?.vectorCount
+  const domainStats: any[] = Array.isArray(status?.domainsStats) ? status.domainsStats : []
+  const overlayTotals = domainStats.length ? domainStats.reduce((acc, d) => ({
+    vector: acc.vector + (d.vectorCount ?? 0),
+    nodes: acc.nodes + (d.graph?.nodes ?? 0),
+    edges: acc.edges + (d.graph?.edges ?? 0),
+  }), { vector: 0, nodes: 0, edges: 0 }) : null
   return (
     <section className="space-y-4">
       <h2 className="text-xl font-bold">Dashboard • Domain: {activeDomain}</h2>
@@ -22,11 +28,20 @@ export const Dashboard: React.FC<Props> = ({ activeDomain, status }) => {
         <p><b>Available domains:</b> {domains.join(', ') || '—'}</p>
         <p><b>Active overlay:</b> {(status?.overlay || []).join(', ') || '—'}</p>
         <p>Search, Records, and Graph use the selected domain; search can merge the overlay based on configuration.</p>
-        {Array.isArray(status?.domainsStats) && status.domainsStats.length > 0 && (
+        {overlayTotals && (
+          <div className="mt-2 flex items-center gap-3 flex-wrap border border-blue-200 bg-blue-50 rounded px-3 py-2">
+            <span className="text-xs uppercase tracking-wide font-semibold text-blue-800">Overlay totals</span>
+            <span className="text-xs">vector: <b>{overlayTotals.vector}</b></span>
+            <span className="text-xs">nodes: <b>{overlayTotals.nodes}</b></span>
+            <span className="text-xs">edges: <b>{overlayTotals.edges}</b></span>
+            <span className="text-xs text-gray-500">across {domainStats.length} domain(s)</span>
+          </div>
+        )}
+        {domainStats.length > 0 && (
           <div className="mt-2">
             <p className="font-semibold mb-1">Per-domain summary:</p>
             <ul className="text-xs space-y-1">
-              {status.domainsStats.map((d:any) => (
+              {domainStats.map((d:any) => (
                 <li key={d.domain} className="flex gap-3 flex-wrap border rounded px-2 py-1">
                   <span className="font-medium">{d.domain}</span>
                   <span>vector: {d.vectorCount ?? (d.vectorStoreExists ? 'ok' : '—')}</span>

@@ -22,30 +22,45 @@ function readGraphRaw(domain?: string) {
   try { return JSON.parse(fs.readFileSync(file, "utf-8")); } catch { return { nodes: [], edges: [] }; }
 }
 
-async function listVectorRecords(domain?: string, limit = 50, offset = 0) {
+async function listVectorRecords(domain?: string, limit = 50, offset = 0, type?: string, q?: string) {
   try {
     const ctx = resolveContext();
     const d = domain || ctx.activeDomain || "global";
     const dir = getVectorDir(d);
-    if (!fs.existsSync(dir)) return { records: [], total: 0, domain: d, limit, offset };
+    if (!fs.existsSync(dir)) return { records: [], total: 0, domain: d, limit, offset, filter: { type: type ?? null, q: q ?? null } };
     const db = await lancedb.connect(dir);
     const table = await db.openTable("memoria_vetorial");
+    const esc = (s: string) => s.replace(/'/g, "''");
+    const clauses: string[] = [];
+    if (type) clauses.push(`type = '${esc(type)}'`);
+    if (q) clauses.push(`text LIKE '%${esc(q)}%'`);
+    const where = clauses.length ? clauses.join(" AND ") : undefined;
     let total: number | null = null;
     try {
-      if (typeof (table as any).countRows === "function") total = await (table as any).countRows();
-      else if (typeof (table as any).count_rows === "function") total = await (table as any).count_rows();
-    } catch {}
-    const rows = await table.query().select(["text", "type", "path"]).offset(offset).limit(limit).toArray();
-    if (total == null) total = offset + rows.length + (rows.length === limit ? 0 : 0); // fallback unknown
+      total = where ? await (table as any).countRows(where) : await (table as any).countRows();
+    } catch {
+      try {
+        if (where) {
+          // Fallback: count matching ids in JS (bounded to 100k rows).
+          const ids = await (table as any).query().select(["text"]).where(where).limit(100000).toArray();
+          total = ids.length;
+        } else {
+          total = await (table as any).countRows();
+        }
+      } catch { total = null; }
+    }
+    let query = (table as any).query().select(["text", "type", "path"]);
+    if (where) query = query.where(where);
+    const rows = await query.offset(offset).limit(limit).toArray();
     const records = rows.map((r: any, i: number) => ({
       idx: offset + i + 1,
       text: r.text || "",
       type: r.type || "unknown",
       path: r.path || "",
     }));
-    return { records, total, limit, offset, domain: d };
+    return { records, total, limit, offset, domain: d, filter: { type: type ?? null, q: q ?? null } };
   } catch (e: any) {
-    return { records: [], total: 0, error: e?.message || String(e), domain, limit, offset };
+    return { records: [], total: null, error: e?.message || String(e), domain, limit, offset };
   }
 }
 
@@ -97,6 +112,7 @@ const server = Bun.serve({
           activeLayer: d,
           overlay: ctx.overlay,
           domains: Object.keys(reg.domains || {}),
+          project: ctx.project ? { dir: ctx.project.dir, domain: ctx.project.config?.domain ?? null } : null,
           totalVersions: versions.length,
           versions,
           graph: stats.graph,
@@ -150,7 +166,9 @@ const server = Bun.serve({
       if (req.method === "GET" && url.pathname === "/api/records") {
         const limit = Math.min(parseInt(url.searchParams.get("limit") || "50"), 200);
         const offset = parseInt(url.searchParams.get("offset") || "0");
-        return Response.json(await listVectorRecords(domainParam, limit, offset), { headers });
+        const type = url.searchParams.get("type") || undefined;
+        const q = url.searchParams.get("q") || undefined;
+        return Response.json(await listVectorRecords(domainParam, limit, offset, type, q), { headers });
       }
 
       if (req.method === "POST" && url.pathname === "/api/search") {

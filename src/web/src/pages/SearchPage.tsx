@@ -33,6 +33,13 @@ export const SearchPage: React.FC<{ activeDomain: string; domains: string[] }> =
         {error && <p className="text-red-600 text-sm">{error}</p>}
       </div>
       {result && (
+        <p className="text-xs text-gray-500">
+          Searched: {(result.byDomain || []).map((d: any) => d.domain).join(', ') || (useOverlay ? domains.join(', ') : activeDomain)}
+          {typeof result.timingMs === 'number' ? ` • ${result.timingMs}ms` : ''}
+          {typeof result.timing_ms === 'number' ? ` • ${result.timing_ms}ms` : ''}
+        </p>
+      )}
+      {result && (
         <div className="grid md:grid-cols-2 gap-4">
           <div className="bg-white p-4 rounded border">
             <h3 className="font-semibold mb-2">Vector results ({result.vector?.length || 0})</h3>

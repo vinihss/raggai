@@ -61,6 +61,16 @@ function App() {
           <TabBtn id="graph" label="Graph" />
           <TabBtn id="snapshots" label="Snapshots" />
         </div>
+        <div className="max-w-7xl mx-auto px-6 pb-3 flex gap-2 flex-wrap items-center text-xs text-gray-600">
+          <span className="uppercase text-[10px] tracking-wide font-semibold text-gray-500">Context</span>
+          {(status?.overlay || []).map((d: string) => (
+            <span key={d} className={`rounded-full border px-2 py-0.5 ${d === activeDomain ? 'bg-blue-100 border-blue-300 text-blue-800 font-medium' : 'bg-white border-gray-200'}`}>{d}</span>
+          ))}
+          <span className="text-gray-300">|</span>
+          {status?.project
+            ? <span className="rounded-full border border-amber-300 bg-amber-50 text-amber-800 px-2 py-0.5">project: {status.project.domain || status.project.dir?.split('/').filter(Boolean).pop() || 'unknown'}</span>
+            : <span className="rounded-full border border-gray-200 bg-white px-2 py-0.5">context: global</span>}
+        </div>
       </header>
 
       <main className="max-w-7xl mx-auto p-6">
