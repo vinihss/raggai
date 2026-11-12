@@ -1,48 +1,19 @@
-import * as fs from 'fs';
-import * as path from 'path';
-
-const DIST = path.resolve('./dist/index.js');
-const SKILL_SRC = path.resolve('./rag-memory.md');
-const SKILL_DST_DIR = '/home/vinicius/.opencode/skills';
-const SKILL_DST = path.join(SKILL_DST_DIR, 'rag-memory.md');
-const PLUGIN_REF = '/home/vinicius/.opencode/plugin/raggai.json';
+import { describeOpenCodeGlobalInstall, installGlobalOpenCode } from "./src/config/opencode-install";
 
 async function main() {
   console.log("⚙️ Automatic OpenCode install (raggai) — no prompt copy\n");
-
-  // 1. Confirma build
-  if (!fs.existsSync(DIST)) {
-    console.error("❌ Plugin não encontrado:", DIST);
-    console.error("   Execute 'bun install.ts' primeiro.");
+  try {
+    const result = installGlobalOpenCode();
+    for (const line of describeOpenCodeGlobalInstall(result)) console.log(`✅ ${line}`);
+    console.log("\n🎉 Installation complete. No prompt content copied.");
+    console.log("   Invocation: ask the agent to use the raggai tools (see the skill); the plugin provides them.");
+  } catch (error) {
+    console.error(`❌ ${error instanceof Error ? error.message : String(error)}`);
     process.exit(1);
   }
-  console.log("✅ Plugin encontrado:", DIST);
-
-  // 2. Copia skill (apenas arquivo de metadados)
-  if (fs.existsSync(SKILL_SRC)) {
-    fs.mkdirSync(SKILL_DST_DIR, { recursive: true });
-    fs.copyFileSync(SKILL_SRC, SKILL_DST);
-    console.log("✅ Skill registrada:", SKILL_DST);
-  } else {
-    console.error("❌ Skill não encontrada:", SKILL_SRC);
-    process.exit(1);
-  }
-
-  // 3. Registra referência do plugin (arquivo auxiliar, não edita opencode.json)
-  fs.mkdirSync(path.dirname(PLUGIN_REF), { recursive: true });
-  fs.writeFileSync(PLUGIN_REF, JSON.stringify({
-    plugin: DIST,
-    module_path: DIST,
-    skill: SKILL_DST,
-    installed_at: new Date().toISOString(),
-    note: "Reference for automatic install. No system.prompt copied."
-  }, null, 2));
-  console.log("✅ Plugin reference created:", PLUGIN_REF);
-
-  console.log("\n🎉 Installation complete. No prompt content copied.");
-  console.log("   Plugin:", DIST);
-  console.log("   Skill:", SKILL_DST);
-  console.log("   Uso: invocar /rag-memory no agente; as ferramentas estão no plugin.");
 }
 
-main().catch(console.error);
+main().catch((error) => {
+  console.error("❌", error);
+  process.exit(1);
+});

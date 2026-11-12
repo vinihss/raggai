@@ -40,12 +40,12 @@ bun install.ts
 bun test_graph_extraction.ts
 ```
 
-- `bun install.ts`: prepares data/build artifacts and builds plugin assets.
-- `bun build ./src/index.ts --outdir ./dist --target node`: rebuild plugin after `src/` changes.
+- `bun install.ts`: prepares `data/`, installs dependencies, builds the plugin (`dist/index.js`) and links the CLI onto your user PATH (`~/.local/bin/raggai` → `bin/raggai`; override with `RAGGAI_BIN_DIR` or `XDG_BIN_HOME`; `--no-path` to skip, `--force` to replace a foreign `raggai` file; warns when the bin dir is not on `PATH`). Works from any cwd afterwards.
+- `bun run build:plugin`: rebuild the plugin after `src/` changes (`@opencode/plugin`, `@xenova/transformers`, `sharp`, `onnxruntime-node`, `@lancedb/lancedb` are external and resolve from `node_modules`).
 
 ## CLI
 
-The CLI entrypoint is `bin/raggai` (also `bun src/cli/index.ts ...` in development).
+The CLI entrypoint is `bin/raggai` (linked onto your user PATH by `bun install.ts`); it resolves the install root from its own location, so it works from any cwd.
 
 Common commands:
 
@@ -173,13 +173,25 @@ Web UI highlights: **Dashboard** (per-domain counts + overlay totals), **Records
 
 ## OpenCode integration
 
+Requires **OpenCode V2** (validated against v2.2.7). The plugin is a V2 server part (`Plugin.define({ id: "raggai", setup })`, tools registered via `ctx.tool.transform`; `@opencode/plugin` is external and resolved from `node_modules`).
+
 ```bash
-raggai opencode install
-raggai init opencode --domain <project-domain>
+raggai opencode install   # global registration (no prompt content copied)
+raggai init opencode --domain <project-domain>   # per-project setup
 ```
 
-- `opencode install`: registers the plugin/skill globally for OpenCode.
-- `init opencode`: configures the current project (`.raggai/config.toml`, `opencode.json`) and links to the installed plugin/skill (global or local fallback).
+`opencode install` registers the plugin **without editing your `opencode.json(c)`**:
+- symlinks this package into the auto-discovered plugins directory: `~/.config/opencode/plugins/opencode-hybrid-rag` → the install root (package directories with `exports` load like published packages),
+- copies the skill to `~/.config/opencode/skills/rag-memory.md` (auto-discovered; flat `.md` files at the source root are valid skills),
+- refreshes `~/.opencode/plugin/raggai.json` (kept for backward compatibility) and removes the identical legacy skill at `~/.opencode/skills/rag-memory.md`.
+
+Restart OpenCode afterwards (or `opencode service restart`). `opencode plugin list` prints "No plugins found" for local directory plugins — it only reflects package-managed installs; local plugins still load (watch the server log for `loading plugin`).
+
+`init opencode` configures the current project: slug domain + `.raggai/config.toml` (`include: [<domain>, "global"]`) and an `opencode.json` whose `plugins` entry points at the **install root directory** (a path to a single file is skipped by V2 — earlier versions of this tool wrote `dist/index.js` and it was silently not loaded). With no global install it also drops the skill into `.opencode/skills/rag-memory.md` (project auto-discovery).
+
+Notes:
+- OpenCode's global config directory is `~/.config/opencode` (or `$XDG_CONFIG_HOME/opencode`); the shell `HOME` alone does **not** isolate it — use `XDG_CONFIG_HOME` for isolated test runs.
+- Both `plugins/` (package symlink) and a project `opencode.json` `plugins: ["<absolute dir>"]` entry were verified to load the plugin (see the commit log for the clean-environment validation).
 
 ## Plugin tools
 
@@ -225,8 +237,7 @@ Main API endpoints:
 4. ~~**Multi-domain UI/API management**~~ — **done**: server-side `type`/`text` filters on `/api/records` with truthful totals; header Context strip (overlay pills + project pill); Dashboard overlay totals; inline action feedback (Notice) replacing native alerts/confirms; `Page X of Y` pagination with real totals; `project` context in `/api/status`.
 5. **Multi-domain snapshots/versioning**
    - Evolve to domain-scoped snapshot/restore for the new model (`~/.config/raggai/domains/*`) with safe confirmations, selectable scope, and consistent CLI/UI/API integration.
-6. **Fully autonomous global distribution**
-   - Ensure `raggai` is on PATH in global installs (`bun link`/install) and runs autonomously outside the repo (assets, native deps, `dist/src`), validating `raggai opencode install|init` in a clean environment/project.
+6. ~~**Fully autonomous global distribution**~~ — **done**: `bun install.ts` links the CLI onto the user PATH (`~/.local/bin/raggai` → repo `bin/raggai`, honors `RAGGAI_BIN_DIR`/`XDG_BIN_HOME`, `--no-path`/`--force`; verified `raggai doctor` from cwd=`/`). Runs autonomously outside the repo (native deps externalized from the plugin bundle; sharp overridden to `^0.35.5` because bun blocks the 0.32.x install script). Validated in a clean environment (fresh copy, isolated `HOME`/`XDG_CONFIG_HOME`): install → build (246 KB bundle) → `doctor` → `import` (1 chunk, 3 graph facts) → `search` (45.8% hit) → `graph` (confidence histogram) → `opencode install` (global plugin symlink auto-discovered — isolated service log: `loading plugin id=…/plugins/opencode-hybrid-rag entrypoint=file:///…/dist/index.js`, no errors) → `init opencode` (project `opencode.json` with directory `plugins` entry). Plugin itself verified loading V2-side with tools registered (`ctx.tool.transform`; 8 tools).
 7. **E2E and OpenCode integration**
    - Full external end-to-end tests: `init` → `import` → `search` → plugin/OpenCode and UI, covering global vs local, project context, overlay, and write isolation.
 8. **Graph extraction pipeline — remaining phases**

@@ -1,9 +1,12 @@
 {
   "name": "opencode-hybrid-rag",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Memória híbrida local vetor + grafo para agentes OpenCode",
-  "main": "src/index.ts",
+  "main": "./dist/index.js",
   "type": "module",
+  "exports": {
+    ".": "./dist/index.js"
+  },
   "bin": {
     "raggai": "./bin/raggai"
   },
@@ -19,7 +22,7 @@
   ],
   "dependencies": {
     "@lancedb/lancedb": "^0.11.0",
-    "@opencode-ai/plugin": "^1.19.4",
+    "@opencode/plugin": "^2.2.7",
     "@xenova/transformers": "^2.17.2",
     "express": "^5.3.0",
     "graphology": "^0.25.4",
@@ -29,9 +32,13 @@
   "trustedDependencies": [
     "protobufjs"
   ],
+  "overrides": {
+    "sharp": "^0.35.5"
+  },
   "scripts": {
-    "build": "bun build ./src/index.ts --outdir ./dist --target node && bun build ./src/cli/index.ts --outdir ./dist/cli --target bun",
-    "build:plugin": "bun build ./src/index.ts --outdir ./dist --target node",
+    "prepack": "bun run build",
+    "build": "bun build ./src/index.ts --outdir ./dist --target node --external @opencode/plugin --external @xenova/transformers --external sharp --external onnxruntime-node --external @lancedb/lancedb && bun build ./src/cli/index.ts --outdir ./dist/cli --target bun",
+    "build:plugin": "bun build ./src/index.ts --outdir ./dist --target node --external @opencode/plugin --external @xenova/transformers --external sharp --external onnxruntime-node --external @lancedb/lancedb",
     "build:cli": "bun build ./src/cli/index.ts --outdir ./dist/cli --target bun",
     "lint": "biome check ./src --config-path=./biome.json || true",
     "format": "biome format --write ./src"

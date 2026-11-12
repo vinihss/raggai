@@ -1,4 +1,24 @@
-import { tool } from "@opencode-ai/plugin";
+// V2 tool definitions. The local wrapper keeps the tool-info shape plain (no SDK
+// dependency at module scope) and adapts legacy `execute` payloads to the V2
+// Tool.Result contract: `{ content: string }` with JSON-serialized output.
+export function raggaiTool(def: {
+  name: string;
+  description: string;
+  inputSchema: Record<string, unknown>;
+  execute: (args: any) => any | Promise<any>;
+}) {
+  return {
+    name: def.name,
+    description: def.description,
+    input: def.inputSchema,
+    execute: async (args: any, _context?: unknown) => {
+      const out = await def.execute(args);
+      if (out && typeof out === "object" && ("content" in out || "output" in out || "metadata" in out)) return out;
+      return { content: JSON.stringify(out ?? null, null, 2) };
+    },
+  };
+}
+const tool = raggaiTool;
 import * as fs from "fs";
 import * as path from "path";
 import * as crypto from "crypto";
