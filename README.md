@@ -37,7 +37,7 @@ Requires **Bun**.
 
 ```bash
 bun install.ts
-bun test_rag.ts
+bun test_graph_extraction.ts
 ```
 
 - `bun install.ts`: prepares data/build artifacts and builds plugin assets.
@@ -62,6 +62,114 @@ raggai export <name|all> [--format json|md|graph-html|audit|bundle] [--out <path
 Notes:
 - `import` supports incremental indexing (hash manifest), configurable exclusions/sensitive-file filtering, batched embeddings, and orphan pruning (best-effort vector cleanup).
 - `search` can run over an overlay of domains and reports timing/cache stats.
+
+## Use cases — this repository indexed as the `raggai` domain
+
+Everything below was executed against the real stores of this repository (`domain = "raggai"` from `.raggai/config.toml`, overlay `["raggai", "global"]`). The numbers are live outputs, not hypotheticals.
+
+### 1. Index the project docs and code
+
+```bash
+$ ./bin/raggai import . --mode notes --force
+Import (notes): 9 files, 9 updated, 0 unchanged, 0 orphans removed, 110 chunks, facts=8 created=2 merged=6 rejected=0 pruned=2 [domain raggai] in 6638ms, cache hits=105 misses=5 (scan 3ms, embed 542ms, write 729ms, prune 0ms)
+
+$ ./bin/raggai import . --mode code --force
+Import (code): 80 files, 80 updated, 0 unchanged, 0 orphans removed, 436 chunks, facts=429 created=5 merged=424 rejected=0 pruned=3 [domain raggai] in 44623ms, cache hits=432 misses=4 (scan 2ms, embed 621ms, write 2871ms, prune 0ms)
+```
+
+- Markdown (9 files) is ingested by the notes pipeline — chunked with 25-word overlap, stored as `type=note`, and fed to the deterministic extractor (links, frontmatter, tables, legacy lines).
+- Source files (80 files: ts/tsx/py/go/rs/json/yaml/css/toml/sql/sh/…) are ingested by the code pipeline — chunked by file structure, stored as `type=code`, extracted for imports/defines/extends/implements. Markdown is **not** double-indexed by the code pipeline.
+- Incremental re-imports skip unchanged files instantly; `--force` re-extracts unchanged files (used after extractor upgrades):
+
+```bash
+$ ./bin/raggai import . --mode code
+Import (code): 80 files, 0 updated, 80 unchanged, 0 orphans removed, 0 chunks, facts=0 created=0 merged=0 rejected=0 pruned=0 [domain raggai] in 224ms, cache hits=0 misses=0
+```
+
+Resulting state (checked via API): `vectorCount: 547` (436 `type=code` + 110 `type=note` + 1 `type=system`), graph `nodes: 371, edges: 430`, zero exact `(type,path,text)` duplicates.
+
+### 2. Ask the memory — hybrid (vector + graph) search
+
+```bash
+$ ./bin/raggai search "graph extraction pipeline" --domains raggai,global --limit 6
+Results for: "graph extraction pipeline" (domains: raggai, global, 522ms, cache hits=0 misses=1)
+- [68.0%] (raggai) .../src/ports/outbound/graph-extraction.port.ts
+- [62.1%] (raggai) .../README.md
+- [61.2%] (raggai) .../README.md
+- [60.3%] (raggai) .../src/domain/models/graph-fact.ts
+- [57.8%] (raggai) .../src/domain/services/graph-ingest.ts
+- [57.4%] (raggai) .../AGENTS.md
+Graph:
+  [raggai] Structured fact: [graph] -> (depends_on) -> [graph-analytics]
+  [raggai] Structured fact: [graph] -> (defines) -> [getFlag]
+```
+
+Natural-language questions land on docs and code together (the vector hit is a `[Note: …]`/`[File: …]` chunk; the graph section shows structured facts from the same domains):
+
+```bash
+$ ./bin/raggai search "stale vectors LanceDB" --domains raggai --limit 2
+Results for: "stale vectors LanceDB" (domains: raggai, 400ms, cache hits=0 misses=1)
+- [56.0%] (raggai) .../AGENTS.md   # points to pending item #3 — physical LanceDB vector cleanup still open
+- [43.2%] (raggai) .../README.md
+```
+
+`--json` exposes the full payload (`vector` hits with scores/domain/path, `graph` facts, `timingMs`, `cache`) for tooling:
+
+```json
+{ "query": "graph extraction", "domains": ["raggai", "global"],
+  "vector": [ { "score": 0.59, "relevance": "59.2%", "path": ".../README.md", "type": "note", "domain": "raggai" } ],
+  "graph": ["[raggai] Structured fact: [graph] -> (depends_on) -> [graph-analytics]"],
+  "timingMs": 131 }
+```
+
+### 3. Inspect the knowledge graph
+
+```bash
+$ ./bin/raggai graph raggai
+{
+  "domain": "raggai",
+  "stats": {
+    "nodes": 371, "edges": 430, "orphans": 0,
+    "byMethod":   { "symbol": 307, "import": 108, "inherit": 8, "link": 6, "rule": 1 },
+    "byPredicate":{ "defines": 307, "depends_on": 108, "implements": 7, "references": 6, "extends": 1, "rel": 1 },
+    "mostConnected": [ { "node": "raggai-paths", "degree": 38 } ]
+  }
+}
+```
+
+### 4. Export — markdown report, JSON, interactive HTML, full bundle
+
+```bash
+$ ./bin/raggai export raggai --format md --out /tmp/export-raggai.md
+Exported md: /tmp/export-raggai.md
+# Domain export: raggai
+## Report
+Orphan nodes removed: 0. Active: 371. Edges: 430 (provenance-tracked: 430, occurrences: 432; by method: symbol=309, import=108, inherit=8, link=6, rule=1).
+## Tree
+[raggai-paths]
+├── ──(depends_on)──> [smol-toml]
+├── ──(defines)──> [DomainType] …
+
+$ ./bin/raggai export raggai --format json --out /tmp/export-raggai.json
+Exported JSON: /tmp/export-raggai.json     # { options, attributes, nodes, edges } graph_store.json as-is
+
+$ ./bin/raggai export raggai --format graph-html --out /tmp/export-raggai.html
+Exported graph HTML: /tmp/export-raggai.html   # self-contained interactive map (vis)
+```
+
+`bundle` writes all of it (graph JSON + audit + HTML + manifest) into a directory; `audit` writes only the audit report. (Method counts differ slightly between the two by design: `raggai graph` reports distinct facts — 307 `symbol` — while the audit counts provenance occurrences, i.e. merged evidence entries — 309 `symbol`, 432 total.)
+
+### 5. Web UI & API probes (localhost:3000/5173)
+
+```bash
+$ curl -s 'http://localhost:3000/api/status?domain=raggai'
+{"activeLayer":"raggai","overlay":["raggai","global"],"project":{"dir":"/home/vinicius/raggai","domain":"raggai"},"vectorCount":547,"graph":{"nodes":371,"edges":430},…}
+
+$ curl -s 'http://localhost:3000/api/records?domain=raggai&type=code&q=LanceDB&limit=2'   # server-side filters
+{"records":[ …2 records… ],"total":10,"filter":{"type":"code","q":"LanceDB"},…}
+```
+
+Web UI highlights: **Dashboard** (per-domain counts + overlay totals), **Records** (`type`/text filters, `Page X of Y` pagination), **Graph** (interactive vis-network render + Audit + export notice), **Search** (overlay toggle, domains searched), **Context strip** (overlay pills + project pill), **Snapshots** (inline two-step rollback confirm). Note: the Graph tab loads vis-network from the unpkg CDN at runtime (requires network access); the rest of the UI works offline.
 
 ## OpenCode integration
 
