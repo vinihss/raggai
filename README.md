@@ -169,7 +169,7 @@ $ curl -s 'http://localhost:3000/api/records?domain=raggai&type=code&q=LanceDB&l
 {"records":[ …2 records… ],"total":10,"filter":{"type":"code","q":"LanceDB"},…}
 ```
 
-Web UI highlights: **Dashboard** (per-domain counts + overlay totals), **Records** (`type`/text filters, `Page X of Y` pagination), **Graph** (interactive vis-network render + Audit + export notice), **Search** (overlay toggle, domains searched), **Context strip** (overlay pills + project pill), **Snapshots** (inline two-step rollback confirm). Note: the Graph tab loads vis-network from the unpkg CDN at runtime (requires network access); the rest of the UI works offline.
+Web UI highlights: **Dashboard** (per-domain counts + overlay totals), **Records** (`type`/text filters, `Page X of Y` pagination), **Graph** (vis-network render — click any relation or node to open the details panel: relation/confidence/provenance with source paths and evidence, or node degree/in-out/neighbors with all edges passing through it; Audit + export available from the same tab), **Search** (overlay toggle, domains searched), **Context strip** (overlay pills + project pill), **Snapshots** (inline two-step rollback confirm). Note: the Graph tab loads vis-network from the unpkg CDN at runtime (requires network access); the rest of the UI works offline.
 
 ## OpenCode integration
 
