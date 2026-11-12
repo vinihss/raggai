@@ -2,6 +2,9 @@
 
 Repo: Bun + TypeScript. Plugin entry `dist/index.js` (built from `src/index.ts`).
 
+## Knowledge base playbook
+- `docs/knowledge-base-playbook.md` — how to build and maintain a lean KB with this tool: what belongs in memory vs. git, note structure that feeds the graph (predicates, confidence), domain strategy, periodic hygiene (`raggai graph`), note templates (decision/invariant/gotcha/runbook) and a 15-minute weekly review checklist. Read this before curating notes or advising on memory usage — the agent's memory is only as good as the notes behind it.
+
 ## Setup & rebuild
 - `bun install.ts` — Creates `data/`, runs `bun install`, builds the plugin (`bun run build:plugin`) and links `raggai` onto the user PATH (`~/.local/bin` → `bin/raggai`; `RAGGAI_BIN_DIR`/`XDG_BIN_HOME` override; `--no-path`/`--force` flags).
 - `bun run build:plugin` — Required after any `src/` change (externalizes `@opencode/plugin`, `@xenova/transformers`, `sharp`, `onnxruntime-node`, `@lancedb/lancedb`, which resolve from `node_modules`; commit `dist/index.js`).

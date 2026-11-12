@@ -42,6 +42,7 @@ bun test_graph_extraction.ts
 
 - `bun install.ts`: prepares `data/`, installs dependencies, builds the plugin (`dist/index.js`) and links the CLI onto your user PATH (`~/.local/bin/raggai` → `bin/raggai`; override with `RAGGAI_BIN_DIR` or `XDG_BIN_HOME`; `--no-path` to skip, `--force` to replace a foreign `raggai` file; warns when the bin dir is not on `PATH`). Works from any cwd afterwards.
 - `bun run build:plugin`: rebuild the plugin after `src/` changes (`@opencode/plugin`, `@xenova/transformers`, `sharp`, `onnxruntime-node`, `@lancedb/lancedb` are external and resolve from `node_modules`).
+- Curating agent memory? Read [`docs/knowledge-base-playbook.md`](docs/knowledge-base-playbook.md) — note structure that feeds the graph, domain strategy, hygiene, a 15-minute weekly review, and what belongs in the KB vs. git.
 
 ## CLI
 
