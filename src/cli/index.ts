@@ -6,6 +6,7 @@ import { initCommand } from "./commands/init";
 import { searchCommand } from "./commands/search";
 import { importCommand } from "./commands/import";
 import { exportCommand } from "./commands/export";
+import { graphCommand } from "./commands/graph";
 
 const args = process.argv.slice(2);
 const [cmd, sub, ...rest] = args;
@@ -20,6 +21,7 @@ Usage:
   raggai search "<query>" [--domain <name>] [--domains a,b] [--limit N] [--json]
   raggai import <path> [--domain <name>] [--mode notes|code|auto]
   raggai export <name|all> [--format json|md|graph-html|audit|bundle] [--out <path>]
+  raggai graph <name> [--domain <name>] [--json]
 `);
 }
 
@@ -33,6 +35,7 @@ async function main() {
       case "search": return await searchCommand(sub, rest);
       case "import": return await importCommand(sub, rest);
       case "export": return await exportCommand(sub, rest);
+      case "graph": return await graphCommand(sub, rest);
       case "-h":
       case "--help":
       case undefined:
