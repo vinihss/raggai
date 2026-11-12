@@ -6,3 +6,7 @@ opencode.json.bak*
 graphify-out/
 data/test_store/
 data/vector_store/
+
+# Build artifacts (keep only the plugin bundle tracked)
+dist/*
+!dist/index.js

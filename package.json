@@ -37,9 +37,9 @@
   },
   "scripts": {
     "prepack": "bun run build",
-    "build": "bun build ./src/index.ts --outdir ./dist --target node --external @opencode/plugin --external @xenova/transformers --external sharp --external onnxruntime-node --external @lancedb/lancedb && bun build ./src/cli/index.ts --outdir ./dist/cli --target bun",
+    "build": "bun build ./src/index.ts --outdir ./dist --target node --external @opencode/plugin --external @xenova/transformers --external sharp --external onnxruntime-node --external @lancedb/lancedb && bun build ./src/cli/index.ts --outdir ./dist/cli --target bun --external @opencode/plugin --external @xenova/transformers --external sharp --external onnxruntime-node --external @lancedb/lancedb",
     "build:plugin": "bun build ./src/index.ts --outdir ./dist --target node --external @opencode/plugin --external @xenova/transformers --external sharp --external onnxruntime-node --external @lancedb/lancedb",
-    "build:cli": "bun build ./src/cli/index.ts --outdir ./dist/cli --target bun",
+    "build:cli": "bun build ./src/cli/index.ts --outdir ./dist/cli --target bun --external @opencode/plugin --external @xenova/transformers --external sharp --external onnxruntime-node --external @lancedb/lancedb",
     "lint": "biome check ./src --config-path=./biome.json || true",
     "format": "biome format --write ./src"
   },
