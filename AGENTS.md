@@ -78,7 +78,7 @@ Phases 1–3 (foundation, markdown rules, code rules) are implemented in `src/`:
 Roadmap: Phase 5 = opt-in model-assisted extraction (validated JSON, thresholds) · Phase 6 = optional AST adapters behind `GraphExtractionPort`.
 
 ## Pending items (documented)
-1. **Complete embedding cache/batching in indexing**: apply `generateMany`/batching and cache metrics consistently across all ingestion flows (CLI/plugin/API).
+1. **Embedding cache/batching in indexing** (done): all ingestion flows share `embedAndSaveChunks` (`src/domain/services/ingest-embed.ts`) — canonical batch size 16, cache-aware `generateMany` with per-text fallback, consistent embed/write timing and cache-stats reporting (CLI `import` console line; plugin tool returns). Plugin `memorize_personal_fact` now returns `timing_ms`/`embedding_cache` like the import tools. (Done 2026-11-11 — verified with a throwaway domain: first import cache misses, forced re-import `embed 0ms` on cache hit.)
 2. **End-to-end validation/security and exclusions**: honor `excludeDirs/excludePatterns` and validate paths/domains/outputs across the entire surface (CLI, web, tools). Fresh global+project install was revalidated manually (`doctor`/`search`/API/UI OK), but automated coverage is missing.
 3. **Incremental/orphans/vector performance**: make physical cleanup of stale/orphan **vectors** in LanceDB robust (beyond best-effort) and safe reindexing. Graph-side stale-fact pruning by source is done (`removeFactsBySource` since Phase 1); vector-side deletion and per-stage metrics are the remaining work.
 4. **Multi-domain UI/API management**: complete UX/operations (filters, action feedback, overlay/context indicators, robust totals/pagination in all scenarios).

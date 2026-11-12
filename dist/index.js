@@ -54670,7 +54670,7 @@ tool.schema = exports_external;
 // src/adapters/inbound/agent-plugin/tool-exports.ts
 import * as fs9 from "fs";
 import * as path8 from "path";
-import * as crypto3 from "crypto";
+import * as crypto4 from "crypto";
 
 // src/config/raggai-paths.ts
 import * as fs from "fs";
@@ -56094,6 +56094,29 @@ function graphIngestForFile(graph, extractor, input, opts) {
   metrics.created = up.created;
   metrics.merged = up.merged;
   return metrics;
+}
+
+// src/domain/services/ingest-embed.ts
+import * as crypto2 from "crypto";
+var INGEST_BATCH_SIZE = 16;
+async function embedAndSaveChunks(ports, items, opts) {
+  if (!items.length)
+    return { count: 0, embedMs: 0, writeMs: 0 };
+  const batchSize = Math.max(1, opts?.batchSize ?? INGEST_BATCH_SIZE);
+  const { embeddingPort, vectorPort } = ports;
+  const e0 = Date.now();
+  const vecs = embeddingPort.generateMany ? await embeddingPort.generateMany(items.map((i2) => i2.text), { batchSize }) : await Promise.all(items.map((i2) => embeddingPort.generate(i2.text)));
+  const embedMs = Date.now() - e0;
+  const w0 = Date.now();
+  for (let i2 = 0;i2 < items.length; i2++) {
+    await vectorPort.save({
+      id: items[i2].id ?? crypto2.randomUUID(),
+      text: items[i2].saveText,
+      embedding: vecs[i2],
+      meta: items[i2].meta
+    });
+  }
+  return { count: items.length, embedMs, writeMs: Date.now() - w0 };
 }
 
 // src/domain/services/predicate-vocab.ts
@@ -68988,7 +69011,7 @@ async function loadItems(mapping, model, pretrainedOptions) {
 // src/config/embedding-cache.ts
 import * as fs5 from "fs";
 import * as path5 from "path";
-import * as crypto2 from "crypto";
+import * as crypto3 from "crypto";
 class EmbeddingCache {
   cacheFile;
   map = {};
@@ -69007,7 +69030,7 @@ class EmbeddingCache {
     }
   }
   key(text, model = "default") {
-    return crypto2.createHash("sha256").update(model + `
+    return crypto3.createHash("sha256").update(model + `
 ` + text).digest("hex");
   }
   get(text, model) {
@@ -69570,7 +69593,7 @@ function getDomainContainer(domain) {
   return { embeddingPort: emb, vectorPort: new LanceDBAdapter(emb, { domain }), graphPort: new JsonGraphAdapter({ domain }), extractionPort: sharedExtraction, domain };
 }
 function hashContent(s) {
-  return crypto3.createHash("sha256").update(s).digest("hex");
+  return crypto4.createHash("sha256").update(s).digest("hex");
 }
 function manifestPath(domain) {
   return path8.join(getDomainDir(domain), "index-manifest.json");
@@ -69618,15 +69641,17 @@ var memorize_personal_fact = tool({
   description: "Stores structured fact + text in active project domain",
   inputSchema: { type: "object", properties: { rawText: { type: "string" }, entity: { type: "string" }, relation: { type: "string" }, target: { type: "string" } }, required: ["rawText"] },
   execute: async ({ rawText, entity, relation, target }) => {
+    const t0 = Date.now();
     try {
       const ctx = resolveContext();
       const d = ctx.activeDomain;
       ensureDomain(d, d === "global" ? "global" : "project");
       const c = getDomainContainer(d);
-      await c.vectorPort.save({ id: crypto3.randomUUID(), text: rawText, embedding: await c.embeddingPort.generate(rawText), meta: { type: "general", path: "none" } });
+      await c.vectorPort.save({ id: crypto4.randomUUID(), text: rawText, embedding: await c.embeddingPort.generate(rawText), meta: { type: "general", path: "none" } });
       if (entity && relation && target)
         c.graphPort.upsertFacts([{ subject: entity, predicate: relation, object: target, confidence: 1, method: "manual" }]);
-      return { status: "Success", domain: d };
+      c.embeddingPort.flushCache?.();
+      return { status: "Success", domain: d, timing_ms: Date.now() - t0, embedding_cache: c.embeddingPort.getCacheStats?.() || undefined };
     } catch (e) {
       return { status: "Error", detail: e.message };
     }
@@ -69662,13 +69687,8 @@ var import_markdown_notes = tool({
       }
     };
     const embedSave = async (items) => {
-      if (!items.length)
-        return;
-      const vecs = c.embeddingPort.generateMany ? await c.embeddingPort.generateMany(items.map((i2) => i2.text), { batchSize: 16 }) : await Promise.all(items.map((i2) => c.embeddingPort.generate(i2.text)));
-      for (let i2 = 0;i2 < items.length; i2++) {
-        await c.vectorPort.save({ id: crypto3.randomUUID(), text: items[i2].saveText, embedding: vecs[i2], meta: items[i2].meta });
-        chunksTotal++;
-      }
+      const r = await embedAndSaveChunks(c, items);
+      chunksTotal += r.count;
     };
     for (const f of files) {
       const content = fs9.readFileSync(f, "utf-8");
@@ -69730,13 +69750,8 @@ var index_local_codebase = tool({
       }
     };
     const embedSave = async (items) => {
-      if (!items.length)
-        return;
-      const vecs = c.embeddingPort.generateMany ? await c.embeddingPort.generateMany(items.map((i2) => i2.text), { batchSize: 16 }) : await Promise.all(items.map((i2) => c.embeddingPort.generate(i2.text)));
-      for (let i2 = 0;i2 < items.length; i2++) {
-        await c.vectorPort.save({ id: crypto3.randomUUID(), text: items[i2].saveText, embedding: vecs[i2], meta: items[i2].meta });
-        total++;
-      }
+      const r = await embedAndSaveChunks(c, items);
+      total += r.count;
     };
     for (const f of files) {
       try {

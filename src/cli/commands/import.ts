@@ -5,6 +5,7 @@ import { createContainer } from "../../config/container";
 import { resolveContext, ensureDomain, getDomainDir } from "../../config/raggai-paths";
 import { chunkCodebase, chunkTextWithOverlap } from "../../domain/services/text-splitter";
 import { graphIngestForFile, emptyGraphIngestMetrics, addGraphIngestMetrics, formatGraphIngestMetrics } from "../../domain/services/graph-ingest";
+import { embedAndSaveChunks } from "../../domain/services/ingest-embed";
 import { walkCodeFiles, walkMarkdownFiles } from "../../config/fs-utils";
 
 function getFlag(args: string[], name: string): string | undefined { const i=args.indexOf(name); return i>=0?args[i+1]:undefined; }
@@ -39,19 +40,11 @@ export async function importCommand(sub: string | undefined, rest: string[]) {
   let tScan=0, tEmbed=0, tWrite=0, tPrune=0;
   const graphStats = emptyGraphIngestMetrics();
 
-  const batchSize = 16;
   async function embedAndSave(items: Array<{ text: string; saveText: string; meta: Record<string, unknown> }>) {
-    if (!items.length) return;
-    const texts = items.map(i => i.text);
-    const e0 = Date.now();
-    const vecs = c.embeddingPort.generateMany ? await c.embeddingPort.generateMany(texts, { batchSize }) : await Promise.all(texts.map(t => c.embeddingPort.generate(t)));
-    tEmbed += Date.now() - e0;
-    const w0 = Date.now();
-    for (let i = 0; i < items.length; i++) {
-      await c.vectorPort.save({ id: crypto.randomUUID(), text: items[i].saveText, embedding: vecs[i], meta: items[i].meta });
-      count++;
-    }
-    tWrite += Date.now() - w0;
+    const r = await embedAndSaveChunks(c, items);
+    count += r.count;
+    tEmbed += r.embedMs;
+    tWrite += r.writeMs;
   }
   async function safeDeletePath(fp: string) {
     if (!c.vectorPort.deleteByPath) return;

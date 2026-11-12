@@ -6,6 +6,7 @@ import { createContainer } from "@/config/container.ts";
 import { resolveContext, ensureDomain, getDomainDir } from "@/config/raggai-paths.ts";
 import { chunkCodebase, chunkTextWithOverlap } from "@/domain/services/text-splitter.ts";
 import { graphIngestForFile, emptyGraphIngestMetrics, addGraphIngestMetrics } from "@/domain/services/graph-ingest.ts";
+import { embedAndSaveChunks } from "@/domain/services/ingest-embed.ts";
 import { DeterministicExtractionAdapter } from "@/adapters/outbound/extraction/deterministic.extraction.ts";
 import { XenovaAdapter } from "@/adapters/outbound/transformers/xenova.adapter.ts";
 import { LanceDBAdapter } from "@/adapters/outbound/lancedb/lancedb.adapter.ts";
@@ -62,6 +63,7 @@ export const memorize_personal_fact = tool({
   description: "Stores structured fact + text in active project domain",
   inputSchema: { type: "object", properties: { rawText: { type: "string" }, entity: { type: "string" }, relation: { type: "string" }, target: { type: "string" } }, required: ["rawText"] },
   execute: async ({ rawText, entity, relation, target }: any) => {
+    const t0 = Date.now();
     try {
       const ctx = resolveContext();
       const d = ctx.activeDomain;
@@ -69,7 +71,8 @@ export const memorize_personal_fact = tool({
       const c = getDomainContainer(d);
       await c.vectorPort.save({ id: crypto.randomUUID(), text: rawText, embedding: await c.embeddingPort.generate(rawText), meta: { type: "general", path: "none" } });
       if (entity && relation && target) c.graphPort.upsertFacts([{ subject: entity, predicate: relation, object: target, confidence: 1, method: "manual" }]);
-      return { status: "Success", domain: d };
+      c.embeddingPort.flushCache?.();
+      return { status: "Success", domain: d, timing_ms: Date.now()-t0, embedding_cache: c.embeddingPort.getCacheStats?.() || undefined };
     } catch (e: any) { return { status: "Error", detail: e.message }; }
   },
 }) as any;
@@ -90,9 +93,8 @@ export const import_markdown_notes = tool({
     const graphStats = emptyGraphIngestMetrics();
     const safeDelete = async (fp:string)=>{ if(!c.vectorPort.deleteByPath) return; try{ const r:any=await c.vectorPort.deleteByPath(fp); if(r&&r.deleted===false) deleteFailures++; }catch{ deleteFailures++; } };
     const embedSave = async (items: Array<{text:string, saveText:string, meta:any}>) => {
-      if (!items.length) return;
-      const vecs = c.embeddingPort.generateMany ? await c.embeddingPort.generateMany(items.map(i=>i.text), { batchSize: 16 }) : await Promise.all(items.map(i=>c.embeddingPort.generate(i.text)));
-      for (let i=0;i<items.length;i++) { await c.vectorPort.save({ id: crypto.randomUUID(), text: items[i].saveText, embedding: vecs[i], meta: items[i].meta }); chunksTotal++; }
+      const r = await embedAndSaveChunks(c, items);
+      chunksTotal += r.count;
     };
     for (const f of files) {
       const content = fs.readFileSync(f,"utf-8"); const h = hashContent(content);
@@ -128,9 +130,8 @@ export const index_local_codebase = tool({
     const graphStats = emptyGraphIngestMetrics();
     const safeDelete = async (fp:string)=>{ if(!c.vectorPort.deleteByPath) return; try{ const r:any=await c.vectorPort.deleteByPath(fp); if(r&&r.deleted===false) deleteFailures++; }catch{ deleteFailures++; } };
     const embedSave = async (items: Array<{text:string, saveText:string, meta:any}>) => {
-      if (!items.length) return;
-      const vecs = c.embeddingPort.generateMany ? await c.embeddingPort.generateMany(items.map(i=>i.text), { batchSize: 16 }) : await Promise.all(items.map(i=>c.embeddingPort.generate(i.text)));
-      for (let i=0;i<items.length;i++) { await c.vectorPort.save({ id: crypto.randomUUID(), text: items[i].saveText, embedding: vecs[i], meta: items[i].meta }); total++; }
+      const r = await embedAndSaveChunks(c, items);
+      total += r.count;
     };
     for (const f of files) {
       try {
