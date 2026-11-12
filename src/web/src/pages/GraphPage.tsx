@@ -54,12 +54,32 @@ export const GraphPage: React.FC<{ activeDomain: string }> = ({ activeDomain }) 
 
   useEffect(() => {
     if (!containerRef.current) return
+    // Don't create (or leak) a network for an empty domain — vis with zero nodes renders nothing anyway.
+    if (!graph?.nodes?.length) {
+      if (networkRef.current) { networkRef.current.destroy(); networkRef.current = null; }
+      return
+    }
     const render = () => {
-      if (!window.vis) return
-      const nodes = new window.vis.DataSet((graph.nodes||[]).map((n: any) => ({ id: n.id, label: n.id, shape: 'dot', size: 16 })))
+      if (!window.vis || !containerRef.current) return
+      const nodes = new window.vis.DataSet((graph.nodes||[]).map((n: any) => ({ id: n.id, label: n.id, shape: 'dot', size: 10 })))
       const edges = new window.vis.DataSet((graph.edges||[]).map((e: any) => ({ from: e.from, to: e.to, label: e.relation || '', arrows: 'to', font: { align: 'top', size: 10 } })))
       if (networkRef.current) { networkRef.current.destroy(); networkRef.current = null; }
-      networkRef.current = new window.vis.Network(containerRef.current, { nodes, edges }, { physics: { stabilization: true }, edges: { smooth: true } })
+      // Physics explosion: with `stabilization` enabled, the barnes-hut solver flings
+      // nodes to ±1800px on a 371-node / 428-edge graph — the canvas paints fully
+      // transparent (invisible graph). Use vis's deterministic improvedLayout and
+      // disable the simulation entirely; pan/zoom/fit remain available.
+      networkRef.current = new window.vis.Network(
+        containerRef.current,
+        { nodes, edges },
+        {
+          physics: { enabled: false },
+          layout: { improvedLayout: true },
+          interaction: { hover: true, dragNodes: true, dragView: true, zoomView: true },
+          nodes: { size: 10 },
+          edges: { smooth: true },
+        },
+      )
+      networkRef.current.fit({ animation: false })
     }
     if (window.vis) { render(); return }
     if (document.querySelector('script[data-vis-network]')) { setTimeout(render, 300); return }
